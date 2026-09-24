@@ -9,6 +9,7 @@ import csv
 import json
 import zipfile
 import re
+import posixpath
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple, Union
@@ -185,51 +186,201 @@ def parse_pptx_to_markdown(file_path: Path) -> Tuple[str, Dict[str, Any]]:
     return "\n".join(md_lines).strip(), metadata
 
 
+def col_letter_to_index(col_str: str) -> int:
+    """Excel 列名转 0-indexed 索引，如 A->0, B->1, Z->25, AA->26"""
+    idx = 0
+    for char in col_str.upper():
+        if "A" <= char <= "Z":
+            idx = idx * 26 + (ord(char) - ord("A") + 1)
+    return idx - 1
+
+
 def parse_xlsx_to_markdown(file_path: Path) -> Tuple[str, Dict[str, Any]]:
-    """解析 .xlsx 表格为 Markdown"""
+    """深度解析 .xlsx 工作簿为 Markdown：
+    1. 提取 core.xml 元数据 (标题、作者、修改时间等)；
+    2. 提取 sharedStrings.xml (支持单段及富文本多 run)；
+    3. 读取 workbook.xml 与 rels 映射真实 Sheet 业务名称；
+    4. 完整支持 inlineStr, s (sharedString), b (bool), str (公式文本), n (数值) 等单元格格式；
+    5. 基于行列坐标构建二维网格，自动切分表格标题/横幅段落与数据表，保留完整数据与多表格结构。
+    """
     metadata: Dict[str, Any] = {}
     md_lines: List[str] = []
 
     try:
         with zipfile.ZipFile(file_path, "r") as z:
-            shared_strings = []
+            s_ns = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+            r_ns = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+
+            # 1. 提取 core.xml 元数据
+            if "docProps/core.xml" in z.namelist():
+                try:
+                    core_tree = ET.fromstring(z.read("docProps/core.xml"))
+                    for child in core_tree:
+                        tag_name = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+                        if child.text:
+                            metadata[tag_name] = child.text.strip()
+                except Exception:
+                    pass
+
+            # 2. 提取 sharedStrings.xml 共享字符串池
+            shared_strings: List[str] = []
             if "xl/sharedStrings.xml" in z.namelist():
-                ss_tree = ET.fromstring(z.read("xl/sharedStrings.xml"))
-                s_ns = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
-                for si in ss_tree.iter(f"{s_ns}si"):
-                    text_parts = [t.text for t in si.iter(f"{s_ns}t") if t.text]
-                    shared_strings.append("".join(text_parts))
+                try:
+                    ss_tree = ET.fromstring(z.read("xl/sharedStrings.xml"))
+                    for si in ss_tree.iter(f"{s_ns}si"):
+                        texts = [t.text for t in si.iter(f"{s_ns}t") if t.text]
+                        shared_strings.append("".join(texts))
+                except Exception:
+                    pass
 
-            sheet_names = [n for n in z.namelist() if re.match(r"xl/worksheets/sheet\d+\.xml", n)]
-            sheet_names.sort()
+            # 3. 解析工作表列表及对应物理路径
+            sheets: List[Tuple[str, str]] = []
+            if "xl/workbook.xml" in z.namelist() and "xl/_rels/workbook.xml.rels" in z.namelist():
+                try:
+                    wb_tree = ET.fromstring(z.read("xl/workbook.xml"))
+                    wb_rels = ET.fromstring(z.read("xl/_rels/workbook.xml.rels"))
+                    rel_map = {
+                        rel.get("Id"): rel.get("Target")
+                        for rel in wb_rels.findall(f"{r_ns}Relationship")
+                    }
 
-            for sheet_idx, sheet_path in enumerate(sheet_names, 1):
-                md_lines.append(f"### Sheet {sheet_idx}\n")
+                    for sheet_elem in wb_tree.iter(f"{s_ns}sheet"):
+                        s_name = sheet_elem.get("name") or "Sheet"
+                        r_id = sheet_elem.get(
+                            "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+                        )
+                        raw_target = rel_map.get(r_id, "")
+                        if raw_target:
+                            clean_t = raw_target.lstrip("/")
+                            norm_target = clean_t if clean_t.startswith("xl/") else f"xl/{clean_t}"
+                            norm_target = posixpath.normpath(norm_target)
+                            if norm_target in z.namelist():
+                                sheets.append((s_name, norm_target))
+                except Exception:
+                    pass
+
+            if not sheets:
+                raw_sheet_paths = [
+                    n for n in z.namelist() if re.match(r"^xl/worksheets/sheet\d+\.xml$", n)
+                ]
+                raw_sheet_paths.sort()
+                for idx, sp in enumerate(raw_sheet_paths, 1):
+                    sheets.append((f"Sheet {idx}", sp))
+
+            # 4. 解析每个 Worksheet
+            for sheet_name, sheet_path in sheets:
+                md_lines.append(f"## {sheet_name}\n")
                 sheet_tree = ET.fromstring(z.read(sheet_path))
-                s_ns = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 
-                rows_data: List[List[str]] = []
-                for row_elem in sheet_tree.iter(f"{s_ns}row"):
-                    row_vals: List[str] = []
-                    for c_elem in row_elem.iter(f"{s_ns}c"):
-                        cell_type = c_elem.get("t")
-                        v_elem = c_elem.find(f"{s_ns}v")
-                        val = v_elem.text if v_elem is not None and v_elem.text else ""
-                        if cell_type == "s" and val.isdigit():
-                            idx = int(val)
-                            val = shared_strings[idx] if idx < len(shared_strings) else val
-                        row_vals.append(val.replace("|", "/"))
-                    if any(row_vals):
-                        rows_data.append(row_vals)
+                # 建立行列二维字典 {(row_idx, col_idx): value}
+                grid: Dict[Tuple[int, int], str] = {}
+                max_r = 0
+                max_c = 0
 
-                if rows_data:
-                    max_cols = max(len(r) for r in rows_data)
-                    header = rows_data[0] + [""] * (max_cols - len(rows_data[0]))
-                    md_lines.append("| " + " | ".join(header) + " |")
-                    md_lines.append("| " + " | ".join(["---"] * max_cols) + " |")
-                    for r in rows_data[1:]:
-                        md_lines.append("| " + " | ".join(r + [""] * (max_cols - len(r))) + " |")
-                    md_lines.append("")
+                for row in sheet_tree.iter(f"{s_ns}row"):
+                    row_attr = row.get("r")
+                    curr_r = int(row_attr) if row_attr and row_attr.isdigit() else max_r + 1
+
+                    for c in row.iter(f"{s_ns}c"):
+                        cell_ref = c.get("r", "")
+                        match = re.match(r"^([A-Za-z]+)(\d+)$", cell_ref)
+                        if match:
+                            col_str, row_str = match.groups()
+                            c_idx = col_letter_to_index(col_str)
+                            r_idx = int(row_str)
+                        else:
+                            c_idx = max_c + 1
+                            r_idx = curr_r
+
+                        c_type = c.get("t")
+                        val = ""
+
+                        if c_type == "inlineStr":
+                            texts = [t.text for t in c.iter(f"{s_ns}t") if t.text]
+                            val = "".join(texts)
+                        elif c_type == "s":
+                            v = c.find(f"{s_ns}v")
+                            if v is not None and v.text and v.text.isdigit():
+                                s_idx = int(v.text)
+                                if s_idx < len(shared_strings):
+                                    val = shared_strings[s_idx]
+                        elif c_type == "b":
+                            v = c.find(f"{s_ns}v")
+                            if v is not None and v.text:
+                                val = "TRUE" if v.text == "1" else "FALSE"
+                        else:
+                            # 提取数值、公式计算缓存 <v>，或内嵌 <t>
+                            v = c.find(f"{s_ns}v")
+                            if v is not None and v.text:
+                                val = v.text
+                            else:
+                                texts = [t.text for t in c.iter(f"{s_ns}t") if t.text]
+                                if texts:
+                                    val = "".join(texts)
+
+                        # 清洗与格式化单元格内容
+                        val = val.strip().replace("\r\n", "<br>").replace("\n", "<br>").replace("\r", "<br>")
+                        if val:
+                            grid[(r_idx, c_idx)] = val
+                            if c_idx > max_c:
+                                max_c = c_idx
+                            if r_idx > max_r:
+                                max_r = r_idx
+
+                if not grid:
+                    md_lines.append("> (空白工作表)\n")
+                    continue
+
+                # 识别表格与标题段落结构
+                elements: List[Tuple[str, Any]] = []
+                current_table: List[List[str]] = []
+
+                for r in range(1, max_r + 1):
+                    row_vals = [grid.get((r, c), "") for c in range(max_c + 1)]
+                    non_empty = [v for v in row_vals if v]
+
+                    if not non_empty:
+                        if current_table:
+                            elements.append(("table", current_table))
+                            current_table = []
+                        continue
+
+                    # 若整行仅有 1 个非空单元格，且位于靠前列（如标题/说明行）
+                    if len(non_empty) == 1 and row_vals[0]:
+                        if current_table:
+                            elements.append(("table", current_table))
+                            current_table = []
+                        elements.append(("heading", row_vals[0]))
+                    else:
+                        current_table.append(row_vals)
+
+                if current_table:
+                    elements.append(("table", current_table))
+
+                # 渲染元素
+                for el_type, el_data in elements:
+                    if el_type == "heading":
+                        md_lines.append(f"### {el_data}\n")
+                    elif el_type == "table":
+                        # 计算此子表格实际用到的最大列
+                        sub_max_col = max(
+                            max(c for c, cell in enumerate(r_vals) if cell)
+                            for r_vals in el_data
+                        )
+                        col_count = sub_max_col + 1
+                        table_rows = []
+                        for r_vals in el_data:
+                            trimmed = [r_vals[c].replace("|", "\\|") for c in range(col_count)]
+                            table_rows.append(trimmed)
+
+                        if table_rows:
+                            header = table_rows[0]
+                            md_lines.append("| " + " | ".join(header) + " |")
+                            md_lines.append("| " + " | ".join(["---"] * col_count) + " |")
+                            for data_row in table_rows[1:]:
+                                md_lines.append("| " + " | ".join(data_row) + " |")
+                            md_lines.append("")
+
     except Exception as e:
         md_lines.append(f"> XLSX 解析异常: {e}")
 

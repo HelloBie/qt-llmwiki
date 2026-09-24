@@ -179,6 +179,26 @@ def test_file2md_service_unit(tmp_path):
     assert "> **原始素材**" in header
 
 
+def test_xlsx_conversion_preserves_data():
+    """测试 XLSX 转换为 Markdown 时保留全部数据（支持 inlineStr、多工作表及二维表格对齐）"""
+    from pathlib import Path
+    from app.services.file2md import parse_xlsx_to_markdown
+
+    xlsx_path = Path(__file__).resolve().parent.parent / "app" / "document" / "llm-wiki" / "raw" / "origin" / "部门人员架构明细.xlsx"
+    if xlsx_path.is_file():
+        md, meta = parse_xlsx_to_markdown(xlsx_path)
+        assert "## 人员架构明细" in md
+        assert "航天电子系统事业部  人员架构明细表" in md
+        assert "吴伟仁" in md
+        assert "系统工程" in md
+        assert "张庆伟" in md
+        assert "曹建国" in md
+        assert "贺新平" in md
+        assert "部门人数统计" in md
+        assert "| 序号 | 部门/科室 | 岗位 | 职级 | 姓名 | 专业方向 | 入职年限 | 学历 |" in md
+        assert "| 部门/科室 | 室主任 | 高级工程师 | 工程师 | 助理工程师 | 管理人员 | 合计 |" in md
+
+
 def test_document_records_database_and_shared_id(client: TestClient):
     """测试原文件与转换出的 MD 文档共用纯数字自增唯一标识 doc_id（从 1 开始递增且不可变更），
     并在 SQLite 数据库单表中记录原文件名、md文件名、标识、双路径。
