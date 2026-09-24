@@ -1,0 +1,48 @@
+services:
+  # 后端 FastAPI + LangGraph 智能体服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: qtllmwiki-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+    volumes:
+      # 将宿主机 document 目录双向挂载映射到容器内，保证上传、删除与 Wiki 文档实时同步且持久化
+      - ./backend/app/document:/app/app/document
+      # 将 config.yaml 挂载映射到容器内，保障配置修改实时持久化
+      - ./backend/config.yaml:/app/config.yaml
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - app-network
+
+  # 前端 Vue 3 + Nginx 服务（自动代理 /api 到后端，支持 SSE 流式）
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: qtllmwiki-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"       # 标准 HTTP 访问入口
+      - "5173:80"     # 兼顾开发常用端口
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

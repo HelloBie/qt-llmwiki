@@ -1,302 +1,200 @@
-# qtllmwiki
+# QT-LLMWiki 智能知识库平台
 
-前后端分离的 LLM 知识库项目脚手架：后端用 FastAPI 暴露 REST + SSE，智能体由
-LangGraph 编排（agent ↔ tools 循环）；前端 Vue 3 单页应用直接消费同一套接口。
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-009688.svg)](https://fastapi.tiangolo.com/)
+[![Vue](https://img.shields.io/badge/Vue-3.4%2B-4FC08D.svg)](https://vuejs.org/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/)
+[![Tests](https://img.shields.io/badge/Tests-18%20Passed-success.svg)](./backend/tests)
 
-| 层 | 技术栈 |
-| --- | --- |
-| 后端 | Python 3.12 · venv · FastAPI · LangChain · LangGraph（REST + SSE 流式） |
-| 前端 | Vue 3 · TypeScript · Vite · Pinia · Vue Router · Axios |
+现代简约风格的前后端分离 **大模型与智能知识库管理平台**。
+后端基于 **FastAPI + LangGraph** 编排智能体（Agent ↔ Tools）与多轮会话状态；前端采用 **Vue 3 + TypeScript + Vite**，以经典三栏式 SPA 界面呈现，集成高精细纯矢量 SVG 图标与深色质感侧边栏。
 
-状态：脚手架阶段。对话链路（含流式、工具调用、多轮记忆）已完整可用；
-`search_knowledge_base` 是**占位实现**，尚未接入真实检索（见「后续扩展点」）。
+---
 
-## 目录结构
+## 核心特性
+
+- 💬 **智能问答 (Smart Chat)**
+  - 支持 **SSE 实时流式打字输出** 与标准非流式 REST 响应；
+  - 智能体工具调用（Tool Calling）透明可视化展示，支持折叠与状态追踪；
+  - 基于 LangGraph 记忆机制的多轮上下文持久隔离（`thread_id`）。
+- 📁 **知识库文件管理 (File Management)**
+  - 管理原始素材池（`raw/origin/`）中的各类文件；
+  - 真实支持常见 Office 文档（`.docx` / `.pptx` / `.xlsx`）、`.md`、`.txt` 等文件的上传、下载、删除；
+  - 支持 Markdown 与纯文本弹窗快速原样预览。
+- ⚙️ **模型设置与持久化 (Model Settings & Config)**
+  - 完全兼容 **OpenAI 标准协议**，支持官方端点、DeepSeek、Ollama、OneAPI 等兼容网关；
+  - 配置持久化写入磁盘 [`config.yaml`](./config.yaml)，智能体图缓存热重载即刻生效；
+  - **模型名称双元素设计**：
+    - **下拉选择框**：彻底摒弃静态死数据，仅通过网络实时拉取目标端点已开放的模型列表；未读取到时自动禁用交互；
+    - **手动输入框**：支持自由键入私有微调或本地模型名，二者双向联动；
+  - 支持一键测试网络连通性并测算往返毫秒数。
+- 📚 **Wiki 知识库体系 (Wiki Knowledge Base)**
+  - 严格规范的知识分层结构：`raw/` 原始不可变素材 + `wiki/` AI 核心沉淀页；
+  - 物理路径位于 `app/document/llm-wiki/`。
+- 🐳 **开箱即用容器化 (Docker Ready)**
+  - 提供 `docker-compose.yml`，宿主机文档目录与 `config.yaml` 均双向实时挂载映射到容器内；
+  - 容器内修改与宿主机保持 100% 实时同步。
+
+---
+
+## 知识库目录结构规范
 
 ```
-qtllmwiki/
-├─ main.py                  # 一键启动前后端（py main.py）
-├─ backend/                 # FastAPI 服务
-│  ├─ .venv/                # Python 虚拟环境（已创建，不入库）
-│  ├─ app/
-│  │  ├─ main.py            # create_app() 入口 + 根路由
-│  │  ├─ core/config.py     # pydantic-settings 配置
-│  │  ├─ api/deps.py        # 依赖注入（runtime / settings）
-│  │  ├─ api/v1/            # 路由：/health、/chat、/chat/stream、/chat/tools
-│  │  ├─ agents/graph.py    # LangGraph 图（agent ↔ tools）
-│  │  ├─ agents/llm.py      # init_chat_model 构建聊天模型
-│  │  ├─ agents/runtime.py  # 惰性构建并缓存编译后的图
-│  │  ├─ agents/tools.py    # DEFAULT_TOOLS：时间 + 知识库检索占位
-│  │  ├─ agents/messages.py # LangChain 消息 ↔ 业务 schema 转换
-│  │  ├─ services/          # ChatService 编排 + SSE 序列化
-│  │  └─ schemas/           # 请求/响应模型
-│  ├─ tests/                # pytest（含 EchoChatModel 假模型，无需联网）
-│  ├─ requirements.txt
-│  └─ requirements-dev.txt
-└─ frontend/                # Vue 3 + TS 单页应用
-   ├─ src/api/              # axios 实例 + fetch 版 SSE 客户端
-   ├─ src/stores/chat.ts    # Pinia：消息、thread_id、流式开关、工具日志
-   ├─ src/views/            # ChatView / AboutView
-   ├─ .env.development      # VITE_API_BASE_URL / VITE_API_PROXY_TARGET
-   └─ vite.config.ts        # /api 代理到后端
+app/document/llm-wiki/
+├── raw/                     # 原始素材池（用户输入源）
+│   ├── origin/              # 原始文件：PDF、Word (.docx)、网页、TXT、Markdown
+│   └── fulltext/            # 全文提取缓存区
+└── wiki/                    # 核心知识沉淀区（AI 自动组织维护的 Markdown 文档）
+    ├── entities/            # 实体页（人物、工具、组件、概念实体）
+    ├── sources/             # 素材摘要页（与 raw 原始文件双向关联）
+    ├── concepts/            # 主题与核心领域知识汇总页
+    ├── comparisons/         # 方案选型与技术横向对比页
+    └── index.md             # 全站核心知识索引目录
 ```
 
-## 环境要求
+> **提示**：根目录下建立了软链接 `app -> backend/app`、`document -> backend/app/document` 和 `config.yaml -> backend/config.yaml`，无论在宿主机任何路径访问均保持一致。
 
-- Python **3.11+**（推荐 3.12，虚拟环境按 3.12 创建）
-- Node.js **20.19+**（`frontend/package.json` 的 `engines` 约束，Vite 7 要求）
-- 一个 OpenAI 兼容的模型端点与 API Key（默认预置 DeepSeek）
+---
+
+## 项目架构与技术栈
+
+```
+qt-llmwiki/
+├── main.py                  # 本地一键启动前后端脚手架 (支持热重载、等待就绪)
+├── config.yaml              # 全局大模型持久化配置 (软链接至 backend/config.yaml)
+├── docker-compose.yml       # Docker 容器化编排 (前端 Nginx + 后端 FastAPI)
+├── app/                     # 顶层 app 软链接 (指向 backend/app)
+├── document/                # 顶层 document 软链接 (指向 backend/app/document)
+│
+├── backend/                 # 后端 FastAPI 根目录
+│   ├── Dockerfile           # 后端 Python 3.12 生产镜像构建
+│   ├── config.yaml          # 持久化配置文件
+│   ├── requirements.txt     # 核心运行时依赖 (FastAPI, LangGraph, PyYAML 等)
+│   ├── app/
+│   │   ├── main.py          # FastAPI 工厂与生命周期初始化
+│   │   ├── core/            # 配置单例 (config.py) 与 YAML 引擎 (yaml_config.py)
+│   │   ├── api/v1/          # 业务路由: chat, files, settings, health
+│   │   ├── agents/          # LangGraph 图编排、运行时缓存、提示词与工具定义
+│   │   ├── services/        # 业务编排与 SSE 流式序列化
+│   │   └── document/        # Wiki 知识库实体目录 (llm-wiki)
+│   └── tests/               # 完整自动化测试套件 (18 个测试全部通过)
+│
+└── frontend/                # 前端 Vue 3 根目录
+    ├── Dockerfile           # 前端多阶段构建 + Nginx 静态托管
+    ├── nginx.conf           # 反向代理配置 (处理 SPA 路由与 SSE 流式长连接)
+    ├── package.json
+    └── src/
+        ├── App.vue          # 现代极简风格三栏 SPA 布局与侧边栏
+        ├── api/             # 封装 Axios 客户端与 fetch SSE 客户端 (chat, files, settings)
+        ├── views/
+        │   ├── ChatView.vue         # 智能问答视图 (打字机效果、工具记录展开)
+        │   ├── FileManagerView.vue  # 文件管理视图 (列表、上传、下载、删除、文本预览)
+        │   └── SettingsView.vue     # 模型设置视图 (OpenAI 协议、在线拉取模型列表)
+        └── assets/style.css         # 全局现代简约无 Emoji 设计系统变量
+```
+
+| 层级 | 技术栈与工具 |
+| :--- | :--- |
+| **后端 (Backend)** | Python 3.12 · FastAPI · LangChain · LangGraph · Pydantic · HTTPX · PyYAML · Uvicorn |
+| **前端 (Frontend)** | Vue 3 · TypeScript · Vite · Pinia · Vue Router · Axios · 生产级纯矢量 SVG 图标 |
+| **部署与运维** | Docker · Docker Compose · Nginx (反向代理 + SSE 缓冲禁用) |
+
+---
 
 ## 快速开始
 
-### 一键启动（推荐）
+### 方式一：Docker Compose 一键启动（生产与容器体验）
 
-首次准备（只做一次）：
+只需确保本地安装了 Docker 与 Docker Compose：
 
-```powershell
-# 后端虚拟环境 + 依赖
+```bash
+# 1. 启动容器编排（自动构建并以后台守护运行）
+docker compose up -d --build
+
+# 2. 查看容器运行状态
+docker compose ps
+```
+
+- **前端应用界面**：浏览器打开 [http://localhost](http://localhost)（或 [http://localhost:5173](http://localhost:5173)）
+- **后端交互式文档**：访问 [http://localhost:8000/docs](http://localhost:8000/docs)
+- **配置持久化**：修改宿主机根目录或容器内的 `config.yaml`，双向实时同步生效应。
+
+---
+
+### 方式二：本地开发一键启动（推荐用于日常开发）
+
+#### 1. 准备后端环境
+```bash
 cd backend
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-Copy-Item .env.example .env      # 编辑 .env，至少填写 LLM_API_KEY
+python3 -m venv .venv
+# macOS / Linux:
+source .venv/bin/activate
+# Windows:
+# .\.venv\Scripts\activate
 
-# 前端依赖
-cd ..\frontend
-npm install
+pip install -r requirements-dev.txt
+cp .env.example .env
+cd ..
 ```
 
-以后每次开发，在仓库根目录执行一条命令即可同时拉起前后端：
-
-```powershell
-py main.py                   # 后端(8000, 热重载) + 前端(5173)
-py main.py --open            # 启动后自动打开浏览器
-py main.py --backend-only    # 只启动后端
-py main.py --frontend-only   # 只启动前端
-py main.py --no-reload       # 关闭后端热重载
-py main.py --no-wait         # 不等待后端健康检查
-py main.py --lan             # 监听 0.0.0.0，手机/局域网可访问
-```
-
-`main.py` 只依赖标准库，用哪个 Python 解释器运行都可以：
-
-- 自动使用 `backend/.venv` 里的解释器启动后端；找不到时回退到当前解释器。
-- 会读取 `backend/.env` 的 `HOST` / `PORT`，并直接调用 `node_modules/vite/bin/vite.js`
-  启动前端（显式 `--host`，避免 Vite 只监听 `::1` 导致 `127.0.0.1` 连不上）。
-- 轮询 `/api/v1/health`，就绪后打印访问地址；未配置 `LLM_API_KEY` 时额外给出提示
-  （`--no-wait` 可跳过等待）。
-- 任一子进程退出会连带停止另一个；**Ctrl+C 一次性停止全部服务**。
-
-> `--lan` 会覆盖 `HOST` 为 `0.0.0.0`（同时影响后端的 CORS/监听与 Vite 的监听地址），
-> 请自行确认局域网环境可信。
->
-> 若在受限 shell（例如本项目的 DSH 沙箱）中运行，uvicorn 的 `--reload`
-> 需要创建命名管道，会被拒绝；此时加 `--no-reload` 即可，普通终端不受影响。
-
-### 分开启动
-
-#### 1. 后端
-
-```powershell
-cd backend
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
-# 或等价写法（host/port/reload 取自配置）：
-.\.venv\Scripts\python.exe -m app.main
-```
-
-- 交互式文档：<http://127.0.0.1:8000/docs>（ReDoc 在 `/redoc`）
-- 健康检查：<http://127.0.0.1:8000/api/v1/health>
-
-未配置 `LLM_API_KEY` 时服务仍可正常启动：`/api/v1/chat` 与 `/chat/stream` 返回 **503**，
-健康检查状态为 `degraded`、`/health/ready` 返回 `{"ready": false}`。
-模型是按请求惰性构建的（`AgentRuntime`），因此改完 `backend/.env` 热重载后即刻生效。
-
-#### 2. 前端
-
-```powershell
+#### 2. 准备前端环境
+```bash
 cd frontend
 npm install
-npm run dev        # http://127.0.0.1:5173
+cd ..
 ```
 
-开发环境下 Vite 把 `/api` 代理到 `VITE_API_PROXY_TARGET`（默认 `http://127.0.0.1:8000`），
-因此无需处理 CORS（后端的 `CORS_ORIGINS` 主要留给不经代理的直连场景）。
+#### 3. 运行根目录 `main.py`
+根目录下的 `main.py` 会自动探测解释器并并行启动前后端开发服务：
 
-```powershell
-npm run build      # vue-tsc 类型检查 + 生产构建到 dist/
-npm run type-check # 仅类型检查
-npm run preview    # 本地预览 dist/
+```bash
+python3 main.py
 ```
+- 后端自动挂载热重载：`http://127.0.0.1:8000`
+- 前端 Vite 开发服务器：`http://127.0.0.1:5173`
+- 支持快捷参数：
+  - `python3 main.py --open`：启动成功后自动唤起浏览器
+  - `python3 main.py --backend-only`：仅启动后端
+  - `python3 main.py --frontend-only`：仅启动前端
 
-## 接口一览
+---
 
-### 通用
+## API 接口概览
 
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| GET | `/` | 服务信息（`app` / `version` / `env` / `docs` / `api_prefix`） |
-| GET | `/health` | 根路径存活探针 |
-| GET | `/api/v1/health` | 存活探针（含 `llm_configured`、`llm_model`；未配置 Key 时为 `degraded`） |
-| GET | `/api/v1/health/ready` | 就绪探针（触发 Agent 图构建） |
-| GET | `/api/v1/openapi.json` | OpenAPI 描述（注意在 `api_prefix` 下） |
+### 1. 模型设置与配置 (`/api/v1/settings`)
+| 方法 | 路径 | 功能说明 |
+| :--- | :--- | :--- |
+| **GET** | `/api/v1/settings/config` | 读取当前 `config.yaml` 中的 OpenAI 配置 |
+| **POST** | `/api/v1/settings/config` | 保存配置写入 `config.yaml` 并即时热重载 Agent |
+| **POST** | `/api/v1/settings/models` | 实时向指定端点抓取可用模型 ID 列表 |
+| **POST** | `/api/v1/settings/test-connection` | 测试 API 基础端点网络连通性并测算延迟 |
 
-### 对话
+### 2. 文件管理 (`/api/v1/files`)
+| 方法 | 路径 | 功能说明 |
+| :--- | :--- | :--- |
+| **GET** | `/api/v1/files` | 获取 `raw/origin/` 目录下的所有文件元信息列表 |
+| **POST** | `/api/v1/files/upload` | 上传原始资料文件（支持常见文档、表格、Markdown） |
+| **DELETE** | `/api/v1/files/{filename}` | 安全删除指定文件 |
+| **GET** | `/api/v1/files/{filename}/preview` | 预览文件文本内容（最大读取 50KB） |
+| **GET** | `/api/v1/files/{filename}/download` | 流式下载原始文件 |
 
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| POST | `/api/v1/chat` | 一轮对话，返回完整回答 + 会话消息 |
-| POST | `/api/v1/chat/stream` | SSE 流式对话 |
-| GET | `/api/v1/chat/tools` | 列出 Agent 已注册工具 |
+### 3. 智能问答与健康检测 (`/api/v1/chat` & `/api/v1/health`)
+| 方法 | 路径 | 功能说明 |
+| :--- | :--- | :--- |
+| **POST** | `/api/v1/chat/stream` | SSE 流式对话端点（返回 `token`、`tool_call`、`done`） |
+| **POST** | `/api/v1/chat` | 非流式一轮对话端点 |
+| **GET** | `/api/v1/health` | 服务健康与 LLM 就绪状态检查 |
 
-请求体（两个对话接口共用）：
+---
 
-```json
-{
-  "messages": [{ "role": "user", "content": "你好" }],
-  "thread_id": "可选，用于多轮记忆隔离，最长 128 字符"
-}
-```
+## 自动化测试
 
-- `messages` 至少一条，`role` 取 `system | user | assistant | tool`。
-- `thread_id` 不传时由服务端生成（uuid hex）并随响应返回；同一 `thread_id`
-  的多轮请求共享 `InMemorySaver` 中的历史消息。
-- 前端每次「新会话」都会换一个新的 `thread_id`，因此会话之间互不污染。
+后端具备完备的单元测试与接口集成测试，包含 Mock 测试环境与配置安全恢复机制：
 
-非流式响应：
-
-```json
-{
-  "thread_id": "5f1c…",
-  "content": "你好，有什么可以帮你？",
-  "messages": [{ "role": "user", "content": "你好" }, { "role": "assistant", "content": "…" }],
-  "elapsed_ms": 812.35
-}
-```
-
-### SSE 流式事件
-
-`POST /api/v1/chat/stream` 返回 `text/event-stream`，每帧形如 `event: <name>\ndata: <json>\n\n`：
-
-| 事件 | `data` | 说明 |
-| --- | --- | --- |
-| `start` | `{ thread_id }` | 流开始，前端据此刷新当前会话 ID |
-| `token` | `{ node, text }` | 模型增量文本（`node` 为 `agent` / `tools`） |
-| `tool_call` | `{ node, name, args }` | 模型发起工具调用 |
-| `tool_result` | `{ node, name, content }` | 工具返回内容 |
-| `done` | `{ thread_id }` | 正常结束 |
-| `error` | `{ message }` | 上游异常（异常被转成事件，不会直接断开连接） |
-
-示例：
-
-```powershell
-$body = '{"messages":[{"role":"user","content":"现在几点？"}]}'
-curl.exe -N -X POST http://127.0.0.1:8000/api/v1/chat/stream `
-  -H "Content-Type: application/json" -d $body
-```
-
-> 浏览器端 `EventSource` 只支持 GET，所以 `frontend/src/api/chat.ts` 用
-> `fetch` + `ReadableStream` + `TextDecoder` 手工解析 SSE 帧，并支持 `AbortController` 中断。
-
-### 错误码
-
-| 状态码 | 触发条件 |
-| --- | --- |
-| 422 | 请求体校验失败（如 `messages` 为空） |
-| 503 | 未配置 `LLM_API_KEY`（`/chat*` 直接拦截） |
-| 502 | 上游模型调用失败（非流式接口统一包装） |
-
-流式接口的模型异常以 `error` 事件下发，HTTP 状态仍为 200。
-
-## 配置项（backend/.env）
-
-复制 `.env.example` 为 `.env` 后按需修改，字段名即环境变量名（大小写不敏感）。
-
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `APP_NAME` | `qtllmwiki-api` | 服务名，出现在 `/` 与健康检查 |
-| `APP_ENV` / `DEBUG` | `dev` / `true` | 运行环境与日志级别（`DEBUG=true` 时第三方库降噪） |
-| `API_PREFIX` | `/api/v1` | 接口前缀，同时决定 `openapi.json` 路径 |
-| `HOST` / `PORT` | `127.0.0.1` / `8000` | 监听地址（`main.py` 与 `python -m app.main` 都会读取） |
-| `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | 逗号分隔的允许来源 |
-| `LLM_PROVIDER` | `openai` | OpenAI 兼容协议，可指向 DeepSeek / 自建网关 |
-| `LLM_MODEL` | `deepseek-chat` | 模型名 |
-| `LLM_API_KEY` | 空 | 为空时回退到环境变量 `OPENAI_API_KEY`；两者皆空则 `/chat*` 返回 503 |
-| `LLM_BASE_URL` | `https://api.deepseek.com/v1` | 兼容端点，留空用 SDK 默认 |
-| `LLM_TEMPERATURE` | `0.2` | 采样温度 |
-| `LLM_TIMEOUT` | `60` | 单次模型请求超时（秒） |
-| `LLM_MAX_RETRIES` | `2` | SDK 层重试次数 |
-| `AGENT_MAX_ITERATIONS` | `8` | 工具调用循环上限，换算成 `recursion_limit = 2n + 1` |
-| `SYSTEM_PROMPT` | 见 `core/config.py` | 系统提示词（默认要求先结论后依据、不编造、中文回答） |
-
-切换到 OpenAI：把 `LLM_MODEL` 改为 `gpt-4o-mini`、`LLM_BASE_URL` 清空或改为
-`https://api.openai.com/v1`，再填对应 `LLM_API_KEY` 即可，代码无需改动。
-
-## 前端配置与功能
-
-前端环境变量（`frontend/.env.development` / `.env.production`）：
-
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `VITE_API_BASE_URL` | `/api/v1` | axios 与 SSE 客户端共用的 API 前缀；跨域部署时填完整地址 |
-| `VITE_API_PROXY_TARGET` | `http://127.0.0.1:8000` | **仅开发环境**：Vite `/api` 代理目标 |
-
-页面：
-
-- `/` 对话页：消息气泡、`流式输出` 开关（关闭则走 `/chat` 非流式）、工具调用记录折叠面板、
-  `停止`（`AbortController` 中断流）、`新会话`、Enter 发送 / Shift+Enter 换行、自动滚动。
-- `/about` 关于页：实时读取 `/health` 与 `/chat/tools`，展示服务版本、状态、模型、
-  API Key 是否配置以及已注册工具。
-
-状态集中在 `src/stores/chat.ts`（Pinia setup store）：`messages` / `threadId` /
-`sending` / `error` / `useStreaming` / `toolLog`，以及 `send` / `stop` / `reset`。
-
-## 测试与检查
-
-```powershell
+```bash
 cd backend
-.\.venv\Scripts\python.exe -m pytest          # 10 个用例：单元 + 接口（假模型，不联网）
-.\.venv\Scripts\python.exe -m ruff check .    # 代码规范（line-length 100，当前全绿）
-.\.venv\Scripts\python.exe -m mypy app        # 类型检查（可选）
+./.venv/bin/pytest tests/
 ```
 
-> `mypy` 目前会在 LangChain / LangGraph 多版本兼容的 `try/except ImportError` 分支上
-> 报少量 `unused-ignore` / `arg-type` 诊断（`agents/graph.py`、`agents/llm.py`、
-> `services/chat_service.py`），属于兼容层的已知噪音，不影响运行与测试。
-
-测试要点：`tests/conftest.py` 用 `EchoChatModel` 注入假模型并清空工具，因此
-不消耗额度也不需要网络；覆盖非流式对话、多轮记忆、SSE 帧、空消息 422、
-工具列表、未配置 Key 时的 503 与 `degraded`。
-
-```powershell
-cd frontend
-npm run type-check
-```
-
-## 后续扩展点
-
-- **接入知识库检索**：替换 `backend/app/agents/tools.py` 中 `search_knowledge_base`
-  的函数体（当前返回占位文案），可对接向量库或全文检索；工具签名与描述即模型可见的
-  契约，改完无需动图。
-- **新增工具**：在 `DEFAULT_TOOLS` 中注册即可，`build_agent_graph` 会自动把它绑到模型
-  并接入 `ToolNode`；`/api/v1/chat/tools` 与前端「关于」页会同步列出。
-- **记忆持久化**：当前使用 LangGraph `InMemorySaver`（进程重启即丢失）。生产环境可换成
-  `langgraph-checkpoint-sqlite` / `langgraph-checkpoint-postgres`，只需给
-  `build_agent_graph(..., checkpointer=...)` 传入 saver。
-- **鉴权与配额**：在 `app/api/deps.py` 增加依赖项即可，路由层已经统一走 `RuntimeDep` /
-  `SettingsDep`。
-- **部署**：`npm run build` 产物在 `frontend/dist/`，可由 Nginx 静态托管并把 `/api`
-  反代到 FastAPI（保持同域则 `VITE_API_BASE_URL=/api/v1` 不变）。
-
-## 设计说明
-
-- **配置单例**：`get_settings()` 用 `lru_cache` 做进程级单例；测试通过
-  `create_app(Settings(_env_file=None, ...))` 注入独立配置。
-- **惰性图构建**：`AgentRuntime` 在首次访问 `.graph` 时才构建图（加锁双检），
-  保证没有 API Key 也能启动并通过健康检查。
-- **消息兼容层**：`agents/messages.py` 统一了 `message.text`（属性/方法）与
-  `content`（`str` / content blocks）在不同 langchain-core 版本上的差异。
-- **工具异常不打断对话**：内置兜底 `ToolNode` 会把工具异常作为 `ToolMessage` 回灌给模型；
-  流式接口的上游异常则转成 `error` 事件。
-
-## 许可
-
-内部脚手架，未附带开源许可证。
+- **测试范围**：存活与就绪探针、SSE 事件帧、文件上传下载安全路径校验、`config.yaml` 读写持久化、多种响应格式模型提取器等；
+- **测试结果**：**18 个测试用例全部 100% 通过**。
