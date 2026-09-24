@@ -4,7 +4,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-009688.svg)](https://fastapi.tiangolo.com/)
 [![Vue](https://img.shields.io/badge/Vue-3.4%2B-4FC08D.svg)](https://vuejs.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/Tests-18%20Passed-success.svg)](./backend/tests)
+[![Tests](https://img.shields.io/badge/Tests-23%20Passed-success.svg)](./backend/tests)
 
 现代简约风格的前后端分离 **大模型与智能知识库管理平台**。
 后端基于 **FastAPI + LangGraph** 编排智能体（Agent ↔ Tools）与多轮会话状态；前端采用 **Vue 3 + TypeScript + Vite**，以经典三栏式 SPA 界面呈现，集成高精细纯矢量 SVG 图标与深色质感侧边栏。
@@ -17,10 +17,14 @@
   - 支持 **SSE 实时流式打字输出** 与标准非流式 REST 响应；
   - 智能体工具调用（Tool Calling）透明可视化展示，支持折叠与状态追踪；
   - 基于 LangGraph 记忆机制的多轮上下文持久隔离（`thread_id`）。
-- 📁 **知识库文件管理 (File Management)**
+- 📁 **知识库文件管理、file2md 转换与统一标识库 (File Management & SQLite Metadata)**
   - 管理原始素材池（`raw/origin/`）中的各类文件；
-  - 真实支持常见 Office 文档（`.docx` / `.pptx` / `.xlsx`）、`.md`、`.txt` 等文件的上传、下载、删除；
-  - 支持 Markdown 与纯文本弹窗快速原样预览。
+  - 真实支持常见 Office 文档（`.docx` / `.pptx` / `.xlsx`）、`.md`、`.txt`、`.csv`、`.json`、`.pdf` 等文件的上传、下载、删除；
+  - **纯数字自增唯一标识（`doc_id`）**：从 1 开始递增的纯数字编号（1, 2, 3...），原文件与其转换生成的 Markdown 全文严格共用同一个唯一标识；分配拥有标识后永久不允许改变；
+  - **SQLite 单表文档映射（`document_records`）**：在数据库同一张表中完整持久化记录原文件名、MD 文件名、纯数字标识（`doc_id`）、原始文件路径（`origin_path`）、MD 全文路径（`md_path`）、文件大小、状态与更新时间；
+  - **`file2md` 全文结构化转换**：读取 `raw/origin` 下的原始文件，转换为带有标准 **YAML Frontmatter**（包含 `doc_id` / `file_number` 纯数字编号、文件名、源路径、目标路径、类型、大小、字数、时间戳与 `converter: file2md`）及引用头信息的 Markdown 文档；**文档标识作为『文件编号』直接写入 Markdown 正文起始处**，规范化存入 `raw/fulltext/`；
+  - 前端支持一键单个/全量批量转换，文件表格与弹窗展示唯一标识，支持在线查看文档映射全表（SQLite）；
+  - 支持后端 CLI 独立调用：`python -m app.services.file2md [--file <file>] [--force] [--status]`。
 - ⚙️ **模型设置与持久化 (Model Settings & Config)**
   - 完全兼容 **OpenAI 标准协议**，支持官方端点、DeepSeek、Ollama、OneAPI 等兼容网关；
   - 配置持久化写入磁盘 [`config.yaml`](./config.yaml)，智能体图缓存热重载即刻生效；
@@ -73,11 +77,12 @@ qt-llmwiki/
 │   ├── app/
 │   │   ├── main.py          # FastAPI 工厂与生命周期初始化
 │   │   ├── core/            # 配置单例 (config.py) 与 YAML 引擎 (yaml_config.py)
+│   │   ├── db/              # SQLite 文档记录表管理 (doc_records.py: document_records 单表映射)
 │   │   ├── api/v1/          # 业务路由: chat, files, settings, health
 │   │   ├── agents/          # LangGraph 图编排、运行时缓存、提示词与工具定义
-│   │   ├── services/        # 业务编排与 SSE 流式序列化
-│   │   └── document/        # Wiki 知识库实体目录 (llm-wiki)
-│   └── tests/               # 完整自动化测试套件 (18 个测试全部通过)
+│   │   ├── services/        # 业务编排 (file2md.py 全文转换, sse.py 流式响应)
+│   │   └── document/        # Wiki 知识库实体目录 (llm-wiki 挂载持久化)
+│   └── tests/               # 完整自动化测试套件 (23 个测试全部通过)
 │
 └── frontend/                # 前端 Vue 3 根目录
     ├── Dockerfile           # 前端多阶段构建 + Nginx 静态托管

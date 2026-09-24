@@ -20,6 +20,23 @@
           <span>{{ loading ? '同步中...' : '刷新' }}</span>
         </button>
 
+        <button class="btn btn-secondary btn-sm" @click="handleOpenRecordsModal" title="查看 SQLite 数据库中记录的文档映射全表">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <ellipse cx="12" cy="5" rx="9" ry="3" />
+            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+          </svg>
+          <span>文档数据库表 (DB)</span>
+        </button>
+
+        <button class="btn btn-secondary btn-sm" :disabled="convertingAll || loading" @click="handleConvertAll" title="将 origin 目录下所有文件转换为 Markdown 存入 raw/fulltext">
+          <svg :class="{ spinning: convertingAll }" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+          </svg>
+          <span>{{ convertingAll ? '转换中...' : '转为 Markdown (file2md)' }}</span>
+        </button>
+
         <button class="btn btn-primary" @click="showUploadModal = true">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -70,16 +87,23 @@
         <table class="data-table">
           <thead>
             <tr>
+              <th class="th-id">文件编号</th>
               <th class="th-name">名称</th>
               <th class="th-type">格式</th>
               <th class="th-size">大小</th>
               <th class="th-status">知识库状态</th>
+              <th class="th-conv">全文 Markdown (file2md)</th>
               <th class="th-date">修改时间</th>
               <th class="th-actions">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="file in filteredFiles" :key="file.id" class="table-row">
+              <td class="td-id">
+                <span class="id-tag" :title="'统一文件编号: ' + (file.doc_id || file.id)">
+                  {{ file.doc_id || file.id }}
+                </span>
+              </td>
               <td class="td-name">
                 <div class="file-icon-box">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -99,9 +123,41 @@
                   已就绪
                 </span>
               </td>
+              <td class="td-conv">
+                <button
+                  v-if="file.is_converted"
+                  class="conv-badge converted-badge"
+                  @click="handlePreview(file)"
+                  title="点击查看已转换的 Markdown 内容"
+                >
+                  <span class="chip-dot-green"></span>
+                  <span>已转 MD</span>
+                </button>
+                <button
+                  v-else
+                  class="conv-badge pending-badge"
+                  :disabled="convertingId === file.id"
+                  @click="handleConvertSingle(file)"
+                  title="点击将此文件转为 Markdown (file2md)"
+                >
+                  <span class="chip-dot-gray"></span>
+                  <span>{{ convertingId === file.id ? '转换中...' : '转为 MD' }}</span>
+                </button>
+              </td>
               <td class="td-date">{{ file.updated_at }}</td>
               <td class="td-actions">
                 <div class="action-group">
+                  <button
+                    class="icon-btn"
+                    :disabled="convertingId === file.id"
+                    @click="handleConvertSingle(file)"
+                    :title="file.is_converted ? '重新转换为 Markdown' : '转为 Markdown (file2md)'"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="23 4 23 10 17 10" />
+                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                    </svg>
+                  </button>
                   <button class="icon-btn" @click="handlePreview(file)" title="预览内容">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -125,7 +181,7 @@
               </td>
             </tr>
             <tr v-if="filteredFiles.length === 0">
-              <td colspan="6" class="empty-state-cell">
+              <td colspan="8" class="empty-state-cell">
                 <div class="empty-content">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
@@ -213,6 +269,8 @@
           <div class="preview-title-info">
             <span class="tag-ext">{{ previewInfo.ext.toUpperCase() }}</span>
             <h3>{{ previewInfo.name }}</h3>
+            <span v-if="previewInfo.doc_id" class="badge-doc-id" :title="'统一文档标识'">ID: {{ previewInfo.doc_id }}</span>
+            <span v-if="previewInfo.is_converted_preview" class="badge-converted-tag">raw/fulltext 转换预览</span>
           </div>
           <button class="close-icon-btn" @click="previewInfo = null">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -225,13 +283,79 @@
         <div class="modal-content">
           <pre v-if="!previewInfo.is_binary" class="code-view">{{ previewInfo.content }}</pre>
           <div v-else class="binary-doc-view">
-            <p>该文件为二进制文档 ({{ previewInfo.size }})，已成功持久化至 raw/origin，可直接下载在本地软件中查看。</p>
-            <button class="btn btn-secondary btn-sm" @click="triggerDownloadByName(previewInfo.name)">下载源文件</button>
+            <p>该文件为二进制文档 ({{ previewInfo.size }})，已持久化至 raw/origin。尚未转换出 Markdown 全文。</p>
+            <div class="btn-row">
+              <button class="btn btn-secondary btn-sm" @click="triggerDownloadByName(previewInfo.name)">下载源文件</button>
+              <button class="btn btn-primary btn-sm" :disabled="convertingId === previewInfo.name" @click="handleConvertFromModal(previewInfo.name)">
+                <span>{{ convertingId === previewInfo.name ? '转换中...' : '转为 Markdown (file2md)' }}</span>
+              </button>
+            </div>
           </div>
         </div>
 
         <div class="modal-actions">
           <button class="btn btn-secondary" @click="previewInfo = null">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 文档数据库映射全表 Modal -->
+    <div v-if="showRecordsModal" class="modal-backdrop" @click.self="showRecordsModal = false">
+      <div class="modal-card modal-xlarge">
+        <div class="modal-titlebar">
+          <div class="records-titlebar">
+            <h3>文档数据库记录表 (SQLite: document_records)</h3>
+            <span class="badge-record-count">共 {{ dbRecords.length }} 条记录</span>
+          </div>
+          <button class="close-icon-btn" @click="showRecordsModal = false">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="modal-content records-content">
+          <div v-if="loadingRecords" class="empty-content">
+            <span>正在读取数据库记录...</span>
+          </div>
+          <div v-else class="records-table-wrap">
+            <table class="records-table">
+              <thead>
+                <tr>
+                  <th>文件编号 (doc_id)</th>
+                  <th>原文件名 (origin)</th>
+                  <th>原文件路径</th>
+                  <th>MD 文件名 (fulltext)</th>
+                  <th>MD 文件路径</th>
+                  <th>状态</th>
+                  <th>更新时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="rec in dbRecords" :key="rec.doc_id">
+                  <td><span class="id-tag">{{ rec.doc_id }}</span></td>
+                  <td class="rec-name" :title="rec.origin_filename">{{ rec.origin_filename }}</td>
+                  <td class="rec-path"><code>{{ rec.origin_path }}</code></td>
+                  <td class="rec-name" :title="rec.md_filename">{{ rec.md_filename || '-' }}</td>
+                  <td class="rec-path"><code>{{ rec.md_path || '-' }}</code></td>
+                  <td>
+                    <span class="rec-status-tag" :class="rec.status">
+                      {{ rec.status === 'converted' ? '已转 MD' : '待处理' }}
+                    </span>
+                  </td>
+                  <td class="rec-date">{{ rec.updated_at }}</td>
+                </tr>
+                <tr v-if="dbRecords.length === 0">
+                  <td colspan="7" class="empty-state-cell">暂无数据库文档记录</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn btn-secondary" @click="showRecordsModal = false">关闭</button>
         </div>
       </div>
     </div>
@@ -253,11 +377,18 @@ import {
   deleteFile,
   fetchPreview,
   getDownloadUrl,
+  convertSingleFile2Md,
+  convertAllFiles2Md,
+  fetchDocumentRecords,
   FileItem,
   PreviewData,
+  DocumentRecord,
 } from '@/api/files'
 
 const showUploadModal = ref(false)
+const showRecordsModal = ref(false)
+const dbRecords = ref<DocumentRecord[]>([])
+const loadingRecords = ref(false)
 const previewInfo = ref<PreviewData | null>(null)
 const isDragging = ref(false)
 const searchQuery = ref('')
@@ -267,6 +398,20 @@ const uploadList = ref<File[]>([])
 const toastMessage = ref('')
 const loading = ref(false)
 const uploading = ref(false)
+const convertingAll = ref(false)
+const convertingId = ref<string | null>(null)
+
+async function handleOpenRecordsModal() {
+  showRecordsModal.value = true
+  loadingRecords.value = true
+  try {
+    dbRecords.value = await fetchDocumentRecords()
+  } catch (err: any) {
+    showToast(err.message || '获取数据库记录失败')
+  } finally {
+    loadingRecords.value = false
+  }
+}
 
 const filterTabs = [
   { key: 'all', name: '全部' },
@@ -285,6 +430,46 @@ async function loadFiles() {
     showToast(err.message || '加载文件列表失败')
   } finally {
     loading.value = false
+  }
+}
+
+async function handleConvertAll() {
+  convertingAll.value = true
+  try {
+    const res = await convertAllFiles2Md(false)
+    showToast(res.message || '全量转换完成！')
+    await loadFiles()
+  } catch (err: any) {
+    showToast(err.message || '批量转换失败')
+  } finally {
+    convertingAll.value = false
+  }
+}
+
+async function handleConvertSingle(file: FileItem) {
+  convertingId.value = file.id
+  try {
+    const res = await convertSingleFile2Md(file.name, true)
+    showToast(res.message || `文件 ${file.name} 转换完成！`)
+    await loadFiles()
+  } catch (err: any) {
+    showToast(err.message || '文件转换失败')
+  } finally {
+    convertingId.value = null
+  }
+}
+
+async function handleConvertFromModal(filename: string) {
+  convertingId.value = filename
+  try {
+    await convertSingleFile2Md(filename, true)
+    showToast(`文件 ${filename} 转换成功！`)
+    await loadFiles()
+    previewInfo.value = await fetchPreview(filename)
+  } catch (err: any) {
+    showToast(err.message || '文件转换失败')
+  } finally {
+    convertingId.value = null
   }
 }
 
@@ -653,6 +838,80 @@ function formatBytes(bytes: number): string {
   background-color: var(--success);
 }
 
+.conv-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+  background-color: transparent;
+}
+
+.converted-badge {
+  background-color: rgba(34, 197, 94, 0.1);
+  color: var(--success);
+  border-color: rgba(34, 197, 94, 0.25);
+}
+
+.converted-badge:hover {
+  background-color: rgba(34, 197, 94, 0.18);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.pending-badge {
+  background-color: var(--bg-subtle);
+  color: var(--text-muted);
+  border-color: var(--border-default);
+}
+
+.pending-badge:hover:not(:disabled) {
+  background-color: var(--bg-muted);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.pending-badge:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.chip-dot-green {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--success);
+  flex-shrink: 0;
+}
+
+.chip-dot-gray {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.badge-converted-tag {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--success);
+  background-color: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+}
+
+.btn-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .action-group {
   display: flex;
   gap: 4px;
@@ -712,6 +971,145 @@ function formatBytes(bytes: number): string {
 
 .modal-large {
   width: 700px;
+}
+
+.modal-xlarge {
+  width: 980px;
+  max-width: 95vw;
+}
+
+.th-id {
+  width: 140px;
+}
+
+.td-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.id-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--primary);
+  background-color: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.badge-doc-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--primary);
+  background-color: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+}
+
+.records-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.badge-record-count {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.records-content {
+  max-height: 480px;
+  overflow-y: auto;
+  padding: 0 !important;
+}
+
+.records-table-wrap {
+  overflow-x: auto;
+}
+
+.records-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+}
+
+.records-table th {
+  position: sticky;
+  top: 0;
+  background-color: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-default);
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.records-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.records-table tr:hover {
+  background-color: var(--bg-subtle);
+}
+
+.rec-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.rec-path code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  background-color: var(--bg-subtle);
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.rec-status-tag {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.rec-status-tag.converted {
+  background-color: rgba(34, 197, 94, 0.1);
+  color: var(--success);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.rec-status-tag.pending {
+  background-color: var(--bg-subtle);
+  color: var(--text-muted);
+  border: 1px solid var(--border-default);
+}
+
+.rec-date {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .modal-titlebar {

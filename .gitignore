@@ -74,3 +74,12 @@ ehthumbs.db
 logs/
 tmp/
 temp/
+
+# Database & SQLite
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+

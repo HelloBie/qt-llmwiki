@@ -23,6 +23,11 @@ def create_app(custom_settings: Optional[Settings] = None, custom_runtime: Optio
             sync_yaml_to_settings(settings)
         except Exception:
             pass
+        try:
+            from app.db.doc_records import init_db
+            init_db()
+        except Exception:
+            pass
 
     app = FastAPI(
         title=settings.APP_NAME,
