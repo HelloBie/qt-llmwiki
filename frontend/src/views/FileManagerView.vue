@@ -305,7 +305,23 @@
 
     <!-- 文本预览弹窗 Modal -->
     <div v-if="previewInfo" class="modal-backdrop" @click.self="previewInfo = null">
-      <div class="modal-card modal-large">
+      <!-- 若为 Markdown 格式（.md 文件或已转换出的 Markdown 全文），采用 GitHub README 样式视窗 -->
+      <div v-if="isMarkdownPreview" class="modal-card modal-md-preview">
+        <MarkdownViewer
+          :content="previewInfo.content || ''"
+          :filename="previewInfo.name"
+          :breadcrumb-dir="getPreviewBreadcrumb(previewInfo.rel_path)"
+          :doc-id="previewInfo.doc_id ? previewInfo.doc_id : null"
+          :size-text="previewInfo.size"
+          :updated-at="previewInfo.updated_at"
+          max-height="82vh"
+          :show-close-btn="true"
+          @close="previewInfo = null"
+        />
+      </div>
+
+      <!-- 若为其他普通非 MD 文本或二进制文档，保留标准提示弹窗 -->
+      <div v-else class="modal-card modal-large">
         <div class="modal-titlebar">
           <div class="preview-title-info">
             <span class="tag-ext">{{ previewInfo.ext.toUpperCase() }}</span>
@@ -418,6 +434,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import MarkdownViewer from '@/components/MarkdownViewer.vue'
 import {
   fetchBrowse,
   uploadFiles,
@@ -432,6 +449,20 @@ import {
   PreviewData,
   DocumentRecord,
 } from '@/api/files'
+
+const isMarkdownPreview = computed(() => {
+  if (!previewInfo.value) return false
+  if (previewInfo.value.is_binary) return false
+  const ext = (previewInfo.value.ext || '').toLowerCase()
+  return ext === 'md' || !!previewInfo.value.is_converted_preview || previewInfo.value.name.toLowerCase().endsWith('.md')
+})
+
+function getPreviewBreadcrumb(relPath?: string): string {
+  if (!relPath) return 'llm-wiki'
+  const parts = relPath.split('/').filter(Boolean)
+  parts.pop()
+  return ['llm-wiki', ...parts].join(' / ')
+}
 
 const showUploadModal = ref(false)
 const showRecordsModal = ref(false)
@@ -1108,6 +1139,17 @@ function formatBytes(bytes: number): string {
 .modal-xlarge {
   width: 980px;
   max-width: 95vw;
+}
+
+.modal-md-preview {
+  width: 1100px;
+  max-width: 95vw;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.25);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  padding: 0;
 }
 
 .th-id {

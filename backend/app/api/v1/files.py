@@ -73,6 +73,7 @@ class PreviewResponse(BaseModel):
     is_converted_preview: bool = Field(default=False, description="是否展示的是从 raw/fulltext 提取的 Markdown 转换预览")
     rel_path: str = Field(default="", description="相对 llm-wiki 根目录的路径")
     in_origin: bool = Field(default=False, description="是否位于 raw/origin，可执行 file2md")
+    updated_at: Optional[str] = Field(default=None, description="文件最后修改时间")
 
 
 class BrowseEntry(BaseModel):
@@ -235,6 +236,7 @@ def build_preview(file_path: Path) -> PreviewResponse:
     stat = file_path.stat()
     ext = file_path.suffix.lstrip(".").lower()
     size_str = format_file_size(stat.st_size)
+    updated_at_str = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
     rel = _rel_to_wiki(file_path)
     in_origin = _is_origin_file(file_path)
     rec = _lookup_doc(file_path)
@@ -255,6 +257,7 @@ def build_preview(file_path: Path) -> PreviewResponse:
                 is_converted_preview=False,
                 rel_path=rel,
                 in_origin=in_origin,
+                updated_at=updated_at_str,
             )
         except Exception as e:
             return PreviewResponse(
@@ -267,6 +270,7 @@ def build_preview(file_path: Path) -> PreviewResponse:
                 is_converted_preview=False,
                 rel_path=rel,
                 in_origin=in_origin,
+                updated_at=updated_at_str,
             )
 
     if in_origin:
@@ -274,16 +278,18 @@ def build_preview(file_path: Path) -> PreviewResponse:
         if target_md.is_file():
             try:
                 conv_content = target_md.read_text(encoding="utf-8", errors="replace")
+                target_stat = target_md.stat()
                 return PreviewResponse(
                     name=file_path.name,
                     ext=ext,
                     is_binary=False,
                     content=conv_content,
-                    size=format_file_size(target_md.stat().st_size),
+                    size=format_file_size(target_stat.st_size),
                     doc_id=doc_id,
                     is_converted_preview=True,
                     rel_path=rel,
                     in_origin=True,
+                    updated_at=datetime.fromtimestamp(target_stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
                 )
             except Exception:
                 pass
@@ -298,6 +304,7 @@ def build_preview(file_path: Path) -> PreviewResponse:
         is_converted_preview=False,
         rel_path=rel,
         in_origin=in_origin,
+        updated_at=updated_at_str,
     )
 
 

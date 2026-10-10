@@ -25,6 +25,7 @@ export interface PreviewData {
   is_converted_preview?: boolean
   rel_path?: string
   in_origin?: boolean
+  updated_at?: string
 }
 
 export interface BrowseEntry {

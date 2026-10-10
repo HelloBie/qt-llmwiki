@@ -1,6 +1,6 @@
 /**
  * 高保真 GitHub 风格 Markdown 渲染与大纲提取器
- * 零第三方外部重型依赖，完全兼容 Vite 与 Docker 构建
+ * 支持折叠式 YAML Frontmatter 头部美化、文档属性卡片与图标对应
  */
 
 export interface TocItem {
@@ -85,6 +85,360 @@ const ALERT_ICONS: Record<string, string> = {
 }
 
 /**
+ * 元数据各字段对应的 SVG 矢量图标库
+ */
+const FIELD_ICONS: Record<string, string> = {
+  // 书签图标（针对标签 tags、category）
+  bookmark: `<svg class="fm-icon-svg fm-bookmark-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`,
+  // 文档编号 ID 图标
+  id: `<svg class="fm-icon-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>`,
+  // 标题 / 文档图标
+  title: `<svg class="fm-icon-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+  // 原始素材 / 文件夹
+  source: `<svg class="fm-icon-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`,
+  // 全文目标文件
+  target: `<svg class="fm-icon-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>`,
+  // 文件格式 / 类型
+  type: `<svg class="fm-icon-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`,
+  // 文件大小
+  size: `<svg class="fm-icon-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`,
+  // 字符统计
+  count: `<svg class="fm-icon-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="21" y1="6" x2="3" y2="6"/><line x1="15" y1="12" x2="3" y2="12"/><line x1="17" y1="18" x2="3" y2="18"/></svg>`,
+  // 转换信息 / 引擎
+  converter: `<svg class="fm-icon-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+  // 日期 / 时间
+  time: `<svg class="fm-icon-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
+  // 作者 / 维护者 / 架构师
+  author: `<svg class="fm-icon-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+  // 版本 / Revision
+  version: `<svg class="fm-icon-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>`,
+  // 状态 / 校验
+  status: `<svg class="fm-icon-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+}
+
+interface FrontmatterEntry {
+  key: string
+  label: string
+  rawVal: any
+  icon: string
+  isTag?: boolean
+  isId?: boolean
+  isCode?: boolean
+}
+
+/**
+ * 解析 YAML Frontmatter 内容为键值字典与列表
+ */
+function parseYaml(lines: string[]): Record<string, any> {
+  const data: Record<string, any> = {}
+  let currentKey = ''
+  let currentList: string[] = []
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+
+    // 列表项格式：- item
+    if (trimmed.startsWith('- ') && currentKey) {
+      const itemVal = trimmed.slice(2).trim().replace(/^["']|["']$/g, '')
+      currentList.push(itemVal)
+      data[currentKey] = currentList
+      continue
+    }
+
+    // 键值格式：key: value
+    const match = trimmed.match(/^([\w-]+)\s*:\s*(.*)$/)
+    if (match) {
+      currentKey = match[1]
+      let val = match[2].trim()
+
+      if (!val) {
+        currentList = []
+        data[currentKey] = currentList
+      } else if (val.startsWith('[') && val.endsWith(']')) {
+        // 内联数组 [a, b, c]
+        const items = val
+          .slice(1, -1)
+          .split(',')
+          .map((s) => s.trim().replace(/^["']|["']$/g, ''))
+          .filter(Boolean)
+        data[currentKey] = items
+        currentList = items
+      } else {
+        val = val.replace(/^["']|["']$/g, '')
+        data[currentKey] = val
+        currentList = []
+      }
+    }
+  }
+
+  return data
+}
+
+/**
+ * 智能为文档提取或生成标签列表
+ */
+function extractDocTags(data: Record<string, any>): string[] {
+  let tags: string[] = []
+
+  if (data.tags) {
+    if (Array.isArray(data.tags)) tags = [...data.tags]
+    else if (typeof data.tags === 'string') {
+      tags = data.tags.split(/[,，、 ]/).map((s) => s.trim()).filter(Boolean)
+    }
+  } else if (data.tag) {
+    tags = [String(data.tag)]
+  } else if (data.category) {
+    tags = [String(data.category)]
+  }
+
+  // 若无标签，智能从类型和标题提取
+  if (tags.length === 0) {
+    if (data.file_type) tags.push(String(data.file_type).toUpperCase())
+    const title = String(data.title || '')
+    const candidates = ['岗位说明', '总体设计', '测控', '飞行控制', '明细', '架构', '数据库', '接口规范', '设计文档']
+    for (const c of candidates) {
+      if (title.includes(c)) tags.push(c)
+    }
+  }
+
+  return Array.from(new Set(tags))
+}
+
+/**
+ * 构造折叠式 Frontmatter 美化卡片 HTML
+ */
+function renderFrontmatterCard(data: Record<string, any>): string {
+  const tags = extractDocTags(data)
+  const docId = data.doc_id || data.file_number || null
+  const fileType = data.file_type ? String(data.file_type).toUpperCase() : ''
+  const fileSize = data.file_size || ''
+  const charCount = data.char_count ? `${data.char_count} 字符` : ''
+
+  // 摘要栏胶囊
+  const summaryPills: string[] = []
+  if (docId) {
+    summaryPills.push(`<span class="fm-summary-badge fm-badge-id">ID: ${escapeHtml(String(docId))}</span>`)
+  }
+  if (fileType) {
+    summaryPills.push(`<span class="fm-summary-badge">${escapeHtml(fileType)}</span>`)
+  }
+  if (fileSize) {
+    summaryPills.push(`<span class="fm-summary-badge">${escapeHtml(String(fileSize))}</span>`)
+  }
+  if (charCount) {
+    summaryPills.push(`<span class="fm-summary-badge">${escapeHtml(charCount)}</span>`)
+  }
+  if (tags.length > 0) {
+    summaryPills.push(
+      `<span class="fm-summary-badge fm-badge-tag">${FIELD_ICONS.bookmark}${tags.length} 标签</span>`
+    )
+  }
+
+  // 组织网格项
+  const items: FrontmatterEntry[] = []
+
+  // 1. 文档编号
+  if (docId) {
+    items.push({
+      key: 'doc_id',
+      label: '文件编号',
+      rawVal: docId,
+      icon: FIELD_ICONS.id,
+      isId: true,
+    })
+  }
+
+  // 2. 文档标题
+  if (data.title) {
+    items.push({
+      key: 'title',
+      label: '文档标题',
+      rawVal: data.title,
+      icon: FIELD_ICONS.title,
+    })
+  }
+
+  // 3. 文档标签 (带书签图标)
+  if (tags.length > 0) {
+    items.push({
+      key: 'tags',
+      label: '文档标签',
+      rawVal: tags,
+      icon: FIELD_ICONS.bookmark,
+      isTag: true,
+    })
+  }
+
+  // 4. 原始文件 / 路径
+  if (data.source_file || data.source_path) {
+    items.push({
+      key: 'source_path',
+      label: '原始素材',
+      rawVal: data.source_path || data.source_file,
+      icon: FIELD_ICONS.source,
+      isCode: true,
+    })
+  }
+
+  // 5. 目标 Markdown 路径
+  if (data.target_file || data.target_path) {
+    items.push({
+      key: 'target_path',
+      label: '全文目标',
+      rawVal: data.target_path || data.target_file,
+      icon: FIELD_ICONS.target,
+      isCode: true,
+    })
+  }
+
+  // 6. 格式类型
+  if (fileType) {
+    items.push({
+      key: 'file_type',
+      label: '文件格式',
+      rawVal: fileType,
+      icon: FIELD_ICONS.type,
+    })
+  }
+
+  // 7. 文件大小
+  if (fileSize) {
+    items.push({
+      key: 'file_size',
+      label: '文件大小',
+      rawVal: fileSize,
+      icon: FIELD_ICONS.size,
+    })
+  }
+
+  // 8. 字符统计
+  if (charCount) {
+    items.push({
+      key: 'char_count',
+      label: '字符统计',
+      rawVal: charCount,
+      icon: FIELD_ICONS.count,
+    })
+  }
+
+  // 9. 转换时间与引擎
+  if (data.converted_at || data.converter) {
+    const convStr = [data.converter ? `引擎: ${data.converter}` : '', data.converted_at]
+      .filter(Boolean)
+      .join(' · ')
+    items.push({
+      key: 'converted_at',
+      label: '转换信息',
+      rawVal: convStr,
+      icon: FIELD_ICONS.converter,
+    })
+  }
+
+  // 10. 创建与修改时间
+  const timeStr = data.modified_at || data.created_at || data.modified || data.created
+  if (timeStr) {
+    items.push({
+      key: 'time',
+      label: '时间记录',
+      rawVal: timeStr,
+      icon: FIELD_ICONS.time,
+    })
+  }
+
+  // 11. 作者与维护者
+  const authorStr = data.author || data.creator || data.lastModifiedBy || data['架构师']
+  if (authorStr && authorStr !== 'Un-named') {
+    items.push({
+      key: 'author',
+      label: '维护人员',
+      rawVal: authorStr,
+      icon: FIELD_ICONS.author,
+    })
+  }
+
+  // 12. 版本号
+  const versionStr = data.version || data.revision || data['文档版本']
+  if (versionStr) {
+    items.push({
+      key: 'version',
+      label: '版本号',
+      rawVal: versionStr,
+      icon: FIELD_ICONS.version,
+    })
+  }
+
+  // 13. 状态
+  const statusStr = data.status || data['文档状态']
+  if (statusStr) {
+    items.push({
+      key: 'status',
+      label: '文档状态',
+      rawVal: statusStr,
+      icon: FIELD_ICONS.status,
+    })
+  }
+
+  // 生成网格项 HTML
+  const gridHtml = items
+    .map((item) => {
+      let valHtml = ''
+      if (item.isTag) {
+        const tagArr = Array.isArray(item.rawVal) ? item.rawVal : [item.rawVal]
+        valHtml = `<div class="fm-tag-list">${tagArr
+          .map(
+            (t) =>
+              `<span class="fm-tag-chip">${FIELD_ICONS.bookmark}<span>${escapeHtml(String(t))}</span></span>`
+          )
+          .join('')}</div>`
+      } else if (item.isId) {
+        valHtml = `<span class="fm-id-chip">ID: ${escapeHtml(String(item.rawVal))}</span>`
+      } else if (item.isCode) {
+        valHtml = `<code>${escapeHtml(String(item.rawVal))}</code>`
+      } else {
+        valHtml = `<span>${escapeHtml(String(item.rawVal))}</span>`
+      }
+
+      return (
+        `<div class="fm-item">` +
+          `<div class="fm-item-icon">${item.icon}</div>` +
+          `<div class="fm-item-content">` +
+            `<span class="fm-item-label">${escapeHtml(item.label)}</span>` +
+            `<div class="fm-item-val">${valHtml}</div>` +
+          `</div>` +
+        `</div>`
+      )
+    })
+    .join('')
+
+  return (
+    `<details class="md-frontmatter-card">` +
+      `<summary class="md-fm-summary">` +
+        `<div class="fm-summary-left">` +
+          `<div class="fm-summary-icon">` +
+            `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">` +
+              `<path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/>` +
+            `</svg>` +
+          `</div>` +
+          `<span class="fm-summary-title">文档信息头 (Metadata)</span>` +
+          `<div class="fm-summary-pills">${summaryPills.join('')}</div>` +
+        `</div>` +
+        `<div class="fm-summary-right">` +
+          `<span class="fm-collapse-hint fm-hint-expand">点击展开详情</span>` +
+          `<span class="fm-collapse-hint fm-hint-collapse">点击折叠</span>` +
+          `<svg class="fm-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">` +
+            `<polyline points="6 9 12 15 18 9"/>` +
+          `</svg>` +
+        `</div>` +
+      `</summary>` +
+      `<div class="md-fm-content">` +
+        `<div class="fm-grid">${gridHtml}</div>` +
+      `</div>` +
+    `</details>`
+  )
+}
+
+/**
  * 主解析函数：将 Markdown 文本转换为带 GitHub 类名的 HTML
  */
 export function parseMarkdown(markdown: string): MarkdownParseResult {
@@ -100,10 +454,51 @@ export function parseMarkdown(markdown: string): MarkdownParseResult {
   let i = 0
   const n = lines.length
 
+  // =========================================================================
+  // 1. 探测并解析 YAML Frontmatter 头部 (--- ... ---)
+  // =========================================================================
+  let startIdx = 0
+  while (startIdx < n && lines[startIdx].trim().length === 0) {
+    startIdx++
+  }
+
+  if (startIdx < n && lines[startIdx].trim() === '---') {
+    let closeIdx = -1
+    for (let j = startIdx + 1; j < n; j++) {
+      if (lines[j].trim() === '---') {
+        closeIdx = j
+        break
+      }
+    }
+    if (closeIdx > startIdx) {
+      const frontmatterLines = lines.slice(startIdx + 1, closeIdx)
+      const fmData = parseYaml(frontmatterLines)
+      output.push(renderFrontmatterCard(fmData))
+      i = closeIdx + 1
+
+      // 跳过紧随其后的冗余文件编号引用块与重复编号行
+      while (i < n) {
+        const nextTrim = lines[i].trim()
+        if (nextTrim.length === 0) {
+          i++
+          continue
+        }
+        if (nextTrim.startsWith('> **文件编号**') || nextTrim.startsWith('**文件编号**：')) {
+          i++
+          continue
+        }
+        break
+      }
+    }
+  }
+
+  // =========================================================================
+  // 2. 主体 Markdown 逐行解析
+  // =========================================================================
   while (i < n) {
     const line = lines[i]
 
-    // 1. 代码块 ```lang
+    // 2.1 代码块 ```lang
     if (line.trim().startsWith('```')) {
       const lang = line.trim().slice(3).trim()
       const codeLines: string[] = []
@@ -130,7 +525,7 @@ export function parseMarkdown(markdown: string): MarkdownParseResult {
       continue
     }
 
-    // 2. 标题 # ~ ######
+    // 2.2 标题 # ~ ######
     const headingMatch = line.match(/^(#{1,6})\s+(.+)$/)
     if (headingMatch) {
       const level = headingMatch[1].length
@@ -153,17 +548,40 @@ export function parseMarkdown(markdown: string): MarkdownParseResult {
         `</h${level}>`
       )
       i++
+
+      // 检查标题后是否紧跟若干行 **元数据** (如文档版本、编写日期等)
+      const metaLines: string[] = []
+      let k = i
+      while (k < n && lines[k].trim().length === 0) k++
+      while (k < n && /^\*\*([^*：:]+)\*\*[:：]\s*(.+)$/.test(lines[k].trim())) {
+        metaLines.push(lines[k].trim())
+        k++
+      }
+
+      if (metaLines.length >= 2) {
+        // 将连续 2 行以上的元数据转换为折叠式属性卡片
+        const docMetaData: Record<string, any> = {}
+        for (const ml of metaLines) {
+          const m = ml.match(/^\*\*([^*：:]+)\*\*[:：]\s*(.+)$/)
+          if (m) {
+            docMetaData[m[1].trim()] = m[2].trim()
+          }
+        }
+        output.push(renderFrontmatterCard(docMetaData))
+        i = k
+      }
+
       continue
     }
 
-    // 3. 水平分割线 --- 或 ***
+    // 2.3 水平分割线 --- 或 ***
     if (/^(\*{3,}|-{3,}|_{3,})$/.test(line.trim())) {
       output.push('<hr />')
       i++
       continue
     }
 
-    // 4. GitHub 引用块与 Alert Callouts (> [!NOTE] 等)
+    // 2.4 GitHub 引用块与 Alert Callouts (> [!NOTE] 等)
     if (line.trim().startsWith('>')) {
       const quoteLines: string[] = []
       while (i < n && lines[i].trim().startsWith('>')) {
@@ -201,7 +619,7 @@ export function parseMarkdown(markdown: string): MarkdownParseResult {
       continue
     }
 
-    // 5. GFM 表格 (| col1 | col2 |)
+    // 2.5 GFM 表格 (| col1 | col2 |)
     if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
       const tableLines: string[] = []
       while (i < n && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
@@ -251,7 +669,7 @@ export function parseMarkdown(markdown: string): MarkdownParseResult {
       }
     }
 
-    // 6. 列表 (有序 / 无序 / 任务列表)
+    // 2.6 列表 (有序 / 无序 / 任务列表)
     const isUnordered = /^(\s*)[-*+]\s+(.+)$/.test(line)
     const isOrdered = /^(\s*)\d+\.\s+(.+)$/.test(line)
 
@@ -271,7 +689,6 @@ export function parseMarkdown(markdown: string): MarkdownParseResult {
           listItems.push(renderListItem(uMatch[2]))
           i++
         } else if (curLine.trim().length === 0) {
-          // 遇到空行判断是否继续
           if (i + 1 < n && (lines[i + 1].match(/^(\s*)[-*+]\s+/) || lines[i + 1].match(/^(\s*)\d+\.\s+/))) {
             i++
             continue
@@ -286,13 +703,13 @@ export function parseMarkdown(markdown: string): MarkdownParseResult {
       continue
     }
 
-    // 7. 空行
+    // 2.7 空行
     if (line.trim().length === 0) {
       i++
       continue
     }
 
-    // 8. 段落
+    // 2.8 普通段落
     const paraLines: string[] = []
     while (
       i < n &&
