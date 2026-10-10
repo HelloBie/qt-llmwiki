@@ -12,6 +12,17 @@ from app.core.yaml_config import load_yaml_config, save_yaml_config, sync_yaml_t
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
+class ModelRoleConfig(BaseModel):
+    name: str = Field(default="", description="模型标识 (例如 deepseek-chat, bge-m3 等)")
+    base_url: Optional[str] = Field(default="", description="独立 API 基础端点 (为空则继承全局 Base URL)")
+    api_key: Optional[str] = Field(default="", description="独立 API 密钥 (为空则继承全局 Key)")
+    temperature: Optional[float] = Field(default=0.7, ge=0.0, le=2.0, description="采样温度 (生成类模型)")
+    max_tokens: Optional[int] = Field(default=4096, ge=128, le=128000, description="最大生成 Token")
+    top_n: Optional[int] = Field(default=5, ge=1, le=50, description="截取数量 (重排模型)")
+    dimension: Optional[int] = Field(default=1024, ge=64, le=8192, description="向量维度 (向量模型)")
+    description: Optional[str] = Field(default="", description="用途职责描述")
+
+
 class OpenAIModelConfig(BaseModel):
     base_url: str = Field(default="https://api.openai.com/v1", description="API 基础端点")
     api_key: str = Field(default="", description="API 密钥")
@@ -21,6 +32,13 @@ class OpenAIModelConfig(BaseModel):
     top_p: float = Field(default=1.0, ge=0.0, le=1.0, description="核采样")
     organization: Optional[str] = Field(default="", description="组织 ID")
     project_id: Optional[str] = Field(default="", description="项目 ID")
+
+    # 五大分工模型角色独立配置
+    chat: Optional[ModelRoleConfig] = Field(default=None, description="对话主模型")
+    digest: Optional[ModelRoleConfig] = Field(default=None, description="文件消化解析模型")
+    embedding: Optional[ModelRoleConfig] = Field(default=None, description="向量编码模型")
+    rerank: Optional[ModelRoleConfig] = Field(default=None, description="语义重排模型")
+    expansion: Optional[ModelRoleConfig] = Field(default=None, description="查询扩展模型")
 
 
 class TestConnectionRequest(BaseModel):
@@ -63,18 +81,76 @@ def extract_model_ids(data: Any) -> List[str]:
 
 @router.get("/config", response_model=OpenAIModelConfig, summary="读取当前 config.yaml 中的模型配置")
 async def get_model_config() -> OpenAIModelConfig:
-    """读取 config.yaml，并返回当前的 OpenAI 协议配置"""
+    """读取 config.yaml，并返回当前的全局与多角色模型配置"""
     raw_cfg = load_yaml_config()
     openai_cfg = raw_cfg.get("openai", {})
+    models_cfg = raw_cfg.get("models", {})
+
+    def get_role_cfg(role_key: str, default_name: str, **default_extras) -> ModelRoleConfig:
+        rc = models_cfg.get(role_key, {})
+        return ModelRoleConfig(
+            name=rc.get("name", default_name),
+            base_url=rc.get("base_url", default_extras.get("base_url", "")),
+            api_key=rc.get("api_key", default_extras.get("api_key", "")),
+            temperature=rc.get("temperature", default_extras.get("temperature", 0.7)),
+            max_tokens=rc.get("max_tokens", default_extras.get("max_tokens", 4096)),
+            top_n=rc.get("top_n", default_extras.get("top_n", 5)),
+            dimension=rc.get("dimension", default_extras.get("dimension", 1024)),
+            description=rc.get("description", default_extras.get("description", "")),
+        )
+
+    base_model = openai_cfg.get("model", "deepseek-chat")
+    chat_cfg = get_role_cfg(
+        "chat",
+        base_model,
+        temperature=float(openai_cfg.get("temperature", 0.7)),
+        description="主问答对话模型，面向用户交互，负责综合推理与高质量解答",
+    )
+    digest_cfg = get_role_cfg(
+        "digest",
+        "qwen-plus",
+        temperature=0.3,
+        description="文件消化解析模型，负责文档解析、知识库构建与实体结构化提炼",
+    )
+    embedding_cfg = get_role_cfg(
+        "embedding",
+        "bge-m3",
+        base_url="http://localhost:11434/v1",
+        api_key="ollama",
+        dimension=1024,
+        description="向量嵌入模型，负责知识库文档切片语义编码与相似度检索",
+    )
+    rerank_cfg = get_role_cfg(
+        "rerank",
+        "bge-reranker-v2-m3",
+        base_url="http://localhost:11434",
+        api_key="ollama",
+        top_n=5,
+        description="语义重排模型，负责候选文本块 Cross-Encoder 精准打分与过滤",
+    )
+    expansion_cfg = get_role_cfg(
+        "expansion",
+        "qwen2.5:1.5b",
+        base_url="http://localhost:11434/v1",
+        api_key="ollama",
+        temperature=0.3,
+        description="查询扩展模型，负责用户提问多角度改写与关键词提取",
+    )
+
     return OpenAIModelConfig(
         base_url=openai_cfg.get("base_url", "https://api.openai.com/v1"),
         api_key=openai_cfg.get("api_key", ""),
-        model=openai_cfg.get("model", "gpt-4o"),
+        model=chat_cfg.name or base_model,
         temperature=float(openai_cfg.get("temperature", 0.7)),
         max_tokens=int(openai_cfg.get("max_tokens", 4096)),
         top_p=float(openai_cfg.get("top_p", 1.0)),
         organization=openai_cfg.get("organization", ""),
         project_id=openai_cfg.get("project_id", ""),
+        chat=chat_cfg,
+        digest=digest_cfg,
+        embedding=embedding_cfg,
+        rerank=rerank_cfg,
+        expansion=expansion_cfg,
     )
 
 
@@ -86,7 +162,34 @@ async def save_model_config(
 ):
     """将前端设置写入 config.yaml，并热更新内存配置与智能体运行时"""
     raw_cfg = load_yaml_config()
-    raw_cfg["openai"] = new_cfg.model_dump()
+
+    # 1. 保存全局 openai 基础兼容配置
+    openai_data = {
+        "base_url": new_cfg.base_url,
+        "api_key": new_cfg.api_key,
+        "model": new_cfg.chat.name if new_cfg.chat and new_cfg.chat.name else new_cfg.model,
+        "temperature": new_cfg.chat.temperature if new_cfg.chat and new_cfg.chat.temperature is not None else new_cfg.temperature,
+        "max_tokens": new_cfg.chat.max_tokens if new_cfg.chat and new_cfg.chat.max_tokens is not None else new_cfg.max_tokens,
+        "top_p": new_cfg.top_p,
+        "organization": new_cfg.organization or "",
+        "project_id": new_cfg.project_id or "",
+    }
+    raw_cfg["openai"] = openai_data
+
+    # 2. 保存五大角色模型的独立配置
+    models_data = raw_cfg.get("models", {})
+    if new_cfg.chat is not None:
+        models_data["chat"] = new_cfg.chat.model_dump()
+    if new_cfg.digest is not None:
+        models_data["digest"] = new_cfg.digest.model_dump()
+    if new_cfg.embedding is not None:
+        models_data["embedding"] = new_cfg.embedding.model_dump()
+    if new_cfg.rerank is not None:
+        models_data["rerank"] = new_cfg.rerank.model_dump()
+    if new_cfg.expansion is not None:
+        models_data["expansion"] = new_cfg.expansion.model_dump()
+
+    raw_cfg["models"] = models_data
 
     # 写入 config.yaml
     save_yaml_config(raw_cfg)
@@ -99,7 +202,7 @@ async def save_model_config(
 
     return {
         "success": True,
-        "message": "配置已成功保存并写入 config.yaml，当前会话已生效",
+        "message": "模型配置已成功保存并写入 config.yaml，当前会话已实时生效",
         "saved_config": new_cfg,
     }
 

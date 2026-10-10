@@ -178,3 +178,66 @@ def test_get_design_doc_detail_endpoint(client: TestClient):
     assert res_traversal.status_code == 404
 
 
+def test_multi_role_models_config(client: TestClient):
+    """测试五大分工模型的配置获取与分别保存"""
+    # 1. 验证获取配置时包含五大模型角色
+    res = client.get("/api/v1/settings/config")
+    assert res.status_code == 200
+    data = res.json()
+    assert "chat" in data
+    assert "digest" in data
+    assert "embedding" in data
+    assert "rerank" in data
+    assert "expansion" in data
+    assert data["chat"]["name"]
+    assert data["embedding"]["name"] == "bge-m3"
+
+    # 2. 分别修改配置并保存
+    payload = {
+        "base_url": "https://api.deepseek.com/v1",
+        "api_key": "sk-unit-test-multi",
+        "model": "deepseek-chat",
+        "temperature": 0.5,
+        "max_tokens": 4096,
+        "top_p": 1.0,
+        "chat": {
+            "name": "deepseek-chat",
+            "base_url": "https://api.deepseek.com/v1",
+            "api_key": "sk-unit-test-multi",
+            "temperature": 0.6,
+        },
+        "digest": {
+            "name": "qwen-plus",
+            "temperature": 0.2,
+        },
+        "embedding": {
+            "name": "bge-m3",
+            "base_url": "http://localhost:11434/v1",
+            "dimension": 1024,
+        },
+        "rerank": {
+            "name": "bge-reranker-v2-m3",
+            "base_url": "http://localhost:11434",
+            "top_n": 8,
+        },
+        "expansion": {
+            "name": "qwen2.5:1.5b",
+            "base_url": "http://localhost:11434/v1",
+            "temperature": 0.3,
+        },
+    }
+    save_res = client.post("/api/v1/settings/config", json=payload)
+    assert save_res.status_code == 200
+    assert save_res.json()["success"] is True
+
+    # 3. 再次获取验证持久化生效
+    verify_res = client.get("/api/v1/settings/config")
+    assert verify_res.status_code == 200
+    v_data = verify_res.json()
+    assert v_data["chat"]["name"] == "deepseek-chat"
+    assert v_data["digest"]["name"] == "qwen-plus"
+    assert v_data["embedding"]["name"] == "bge-m3"
+    assert v_data["rerank"]["top_n"] == 8
+    assert v_data["expansion"]["name"] == "qwen2.5:1.5b"
+
+

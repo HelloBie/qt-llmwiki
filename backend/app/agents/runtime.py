@@ -42,10 +42,14 @@ class AgentRuntime:
             llm = self.custom_llm if self.custom_llm is not None else create_chat_model(self.settings)
             tools = self.custom_tools if self.custom_tools is not None else DEFAULT_TOOLS
 
+            from app.services.prompt_service import get_default_system_prompt
+
+            system_prompt = get_default_system_prompt(fallback=self.settings.SYSTEM_PROMPT)
+
             self._graph = build_agent_graph(
                 llm=llm,
                 tools=tools,
-                system_prompt=self.settings.SYSTEM_PROMPT,
+                system_prompt=system_prompt,
             )
             return self._graph
 

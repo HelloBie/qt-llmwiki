@@ -1,5 +1,16 @@
 import { apiClient } from './client'
 
+export interface ModelRoleConfig {
+  name: string
+  base_url?: string
+  api_key?: string
+  temperature?: number
+  max_tokens?: number
+  top_n?: number
+  dimension?: number
+  description?: string
+}
+
 export interface OpenAIConfig {
   base_url: string
   api_key: string
@@ -9,6 +20,11 @@ export interface OpenAIConfig {
   top_p: number
   organization?: string
   project_id?: string
+  chat?: ModelRoleConfig
+  digest?: ModelRoleConfig
+  embedding?: ModelRoleConfig
+  rerank?: ModelRoleConfig
+  expansion?: ModelRoleConfig
 }
 
 export interface TestConnectionResult {

@@ -51,6 +51,12 @@ class Settings(BaseSettings):
         description="全局系统提示词"
     )
 
+    # 本地小模型服务配置 (Ollama)
+    OLLAMA_BASE_URL: str = Field(default="http://localhost:11434", description="本地 Ollama 服务的访问地址")
+    LOCAL_EXPANSION_MODEL: str = Field(default="qwen2.5:1.5b", description="本地查询扩展小模型 (阿里通义千问)")
+    LOCAL_EMBEDDING_MODEL: str = Field(default="bge-m3", description="本地向量编码模型 (智源 BAAI)")
+    LOCAL_RERANK_MODEL: str = Field(default="bge-reranker-v2-m3", description="本地语义重排模型 (智源 BAAI)")
+
     model_config = SettingsConfigDict(
         env_file=str(DEFAULT_ENV_FILE) if DEFAULT_ENV_FILE.exists() else None,
         env_file_encoding="utf-8",

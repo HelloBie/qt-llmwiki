@@ -6,7 +6,7 @@
         <p class="page-sub">
           {{
             activeTab === 'model'
-              ? '管理 OpenAI 兼容协议的基础端点、凭证密钥及模型推理超参数'
+              ? '集中配置与调优五大分工模型：对话问答、文件消化、向量编码、语义重排与查询扩展'
               : '查阅系统概要设计、详细设计、数据库设计与接口规范 (GitHub 风格实时预览)'
           }}
         </p>
@@ -38,236 +38,404 @@
     </header>
 
     <div :class="['settings-scroll-area', { 'wide-layout': activeTab === 'docs' }]">
-      <!-- 视图 1: 模型配置 -->
+      <!-- 视图 1: 多模型分工配置 -->
       <template v-if="activeTab === 'model'">
-      <section class="card">
-        <div class="card-header">
-          <div class="card-header-left">
-            <div class="provider-icon">
-              <!-- 精细 OpenAI 矢量 Logo -->
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1683a.071.071 0 0 1 .038.052v5.5826a4.5045 4.5045 0 0 1-4.4945 4.4947zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4997 4.4997 0 0 1-6.1408-1.6464zM2.3428 7.897a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1683a.0757.0757 0 0 1-.071 0l-4.8303-2.7866A4.5045 4.5045 0 0 1 2.3428 7.897zm16.5991 3.8558L13.1038 8.384l2.0153-1.1636a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6726a.79.79 0 0 0-.4022-.6905zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2312V6.8988a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4997 4.4997 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1635a.0804.0804 0 0 1-.038-.0567V6.0748a4.4997 4.4997 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.4598a.7948.7948 0 0 0-.3927.6813l-.0048 6.7219zm1.3722-2.385l2.678-1.5474 2.6828 1.5474v3.0901l-2.6828 1.5474-2.678-1.5474z"/>
+        <!-- 全局默认主端点卡片 -->
+        <section class="card global-provider-card">
+          <div class="card-header">
+            <div class="card-header-left">
+              <div class="provider-icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="2" y1="12" x2="22" y2="12" />
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                </svg>
+              </div>
+              <div>
+                <div class="card-title-row">
+                  <h3 class="card-title">全局默认端点 (Default / Cloud Provider)</h3>
+                  <span class="badge-role">主基准端点</span>
+                </div>
+                <p class="card-desc">所有未单独指定独立端点的模型角色将默认继承此处的 Base URL 和 API 密钥</p>
+              </div>
+            </div>
+
+            <button class="btn btn-secondary btn-sm" :disabled="testingGlobal" @click="testGlobalConnection">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
               </svg>
-            </div>
-            <div>
-              <h3 class="card-title">OpenAI Compatible Provider</h3>
-              <p class="card-desc">支持官方 OpenAI 及任何兼容端点 (DeepSeek / OneAPI / Ollama / FastChat)</p>
-            </div>
+              <span>{{ testingGlobal ? '连接中...' : '测试全局连通性' }}</span>
+            </button>
           </div>
 
-          <button class="btn btn-secondary btn-sm" :disabled="testing" @click="testConnection">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-            </svg>
-            <span>{{ testing ? 'Connecting...' : '测试连通性' }}</span>
-          </button>
-        </div>
-
-        <div class="form-layout">
-          <!-- Base URL -->
-          <div class="field full">
-            <label class="field-label">
-              <span>API 接口地址 (Base URL)</span>
-              <span class="mark-req">*</span>
-            </label>
-            <input
-              type="text"
-              v-model="config.base_url"
-              class="field-input font-mono"
-              placeholder="https://api.openai.com/v1"
-            />
-            <span class="field-hint">
-              官方地址为 <code>https://api.openai.com/v1</code>；若使用 DeepSeek 请填 <code>https://api.deepseek.com/v1</code>
-            </span>
-          </div>
-
-          <!-- API Key -->
-          <div class="field full">
-            <label class="field-label">
-              <span>API Key</span>
-              <span class="mark-req">*</span>
-            </label>
-            <div class="key-wrapper">
-              <input
-                :type="showKey ? 'text' : 'password'"
-                v-model="config.api_key"
-                class="field-input font-mono"
-                placeholder="sk-..."
-              />
-              <button class="eye-toggle" @click="showKey = !showKey" type="button" :title="showKey ? '隐藏' : '显示'">
-                <svg v-if="!showKey" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
-                <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                  <line x1="1" y1="1" x2="23" y2="23" />
-                </svg>
-              </button>
-            </div>
-            <span class="field-hint">配置保存在 backend/config.yaml 中，支持热加载</span>
-          </div>
-
-          <!-- 元素 1: 仅读取接口模型列表下拉选择（读取不到时禁用交互） -->
-          <div class="field half">
-            <div class="label-row">
+          <div class="form-layout">
+            <!-- 全局 Base URL -->
+            <div class="field half">
               <label class="field-label">
-                <span>模型列表</span>
-                <span class="opt-tag" :class="{ 'tag-disabled': fetchedModels.length === 0 }">
-                  {{ fetchedModels.length > 0 ? `${fetchedModels.length} 个可用` : '未读取' }}
-                </span>
+                <span>全局 API 基础端点 (Base URL)</span>
+                <span class="mark-req">*</span>
               </label>
-              <button class="text-btn" type="button" @click="refreshModels" :disabled="fetchingModels" title="从接口刷新模型列表">
-                <svg :class="{ spinning: fetchingModels }" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="1 4 1 10 7 10" />
-                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+              <input
+                type="text"
+                v-model="config.base_url"
+                class="field-input font-mono"
+                placeholder="https://api.deepseek.com/v1"
+              />
+              <span class="field-hint">
+                如 DeepSeek <code>https://api.deepseek.com/v1</code> 或 阿里百炼 <code>https://dashscope.aliyuncs.com/compatible-mode/v1</code>
+              </span>
+            </div>
+
+            <!-- 全局 API Key -->
+            <div class="field half">
+              <label class="field-label">
+                <span>全局 API Key</span>
+                <span class="mark-req">*</span>
+              </label>
+              <div class="key-wrapper">
+                <input
+                  :type="showGlobalKey ? 'text' : 'password'"
+                  v-model="config.api_key"
+                  class="field-input font-mono"
+                  placeholder="sk-..."
+                />
+                <button class="eye-toggle" @click="showGlobalKey = !showGlobalKey" type="button" :title="showGlobalKey ? '隐藏' : '显示'">
+                  <svg v-if="!showGlobalKey" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                  <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                  </svg>
+                </button>
+              </div>
+              <span class="field-hint">凭证密钥持久化保存在 backend/config.yaml 中</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- 五大功能模型角色配置导航区 -->
+        <section class="card roles-section-card">
+          <div class="section-title-bar">
+            <div>
+              <h3 class="card-title">五大功能模型角色矩阵</h3>
+              <p class="card-desc">为对话、消化、向量、重排与扩展五个关键链路分别指定最合适的大/小模型与超参数</p>
+            </div>
+          </div>
+
+          <!-- 角色切换胶囊栏 -->
+          <div class="role-selector-pills">
+            <button
+              v-for="r in roleDefs"
+              :key="r.key"
+              :class="['role-pill', { active: currentRoleKey === r.key }]"
+              @click="currentRoleKey = r.key"
+            >
+              <div class="pill-icon" v-html="r.icon"></div>
+              <div class="pill-text">
+                <span class="pill-name">{{ r.label }}</span>
+                <span class="pill-model-tag" :title="getRoleModelName(r.key)">
+                  {{ getRoleModelName(r.key) || '未指定' }}
+                </span>
+              </div>
+              <span class="pill-endpoint-badge" :class="getRoleEndpointType(r.key)">
+                {{ getRoleEndpointLabel(r.key) }}
+              </span>
+            </button>
+          </div>
+
+          <!-- 当前选中角色的专属配置面板 -->
+          <div class="role-detail-panel" v-if="activeRoleDef && currentRoleConfig">
+            <div class="panel-header">
+              <div class="panel-header-left">
+                <div class="panel-icon" v-html="activeRoleDef.icon"></div>
+                <div>
+                  <div class="panel-title-row">
+                    <h4 class="panel-title">{{ activeRoleDef.label }}</h4>
+                    <span class="role-code-tag">{{ activeRoleDef.key }}</span>
+                  </div>
+                  <p class="panel-desc">{{ activeRoleDef.description }}</p>
+                </div>
+              </div>
+
+              <!-- 针对此角色的连通性测试 -->
+              <button
+                class="btn btn-secondary btn-sm"
+                :disabled="testingRole"
+                @click="testCurrentRoleConnection"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
                 </svg>
-                <span>{{ fetchingModels ? '拉取中...' : '刷新列表' }}</span>
+                <span>{{ testingRole ? '测试中...' : '测试该模型端点' }}</span>
               </button>
             </div>
-            <select
-              v-model="selectedDropdownModel"
-              @change="onDropdownChange"
-              class="field-select"
-              :disabled="fetchingModels || fetchedModels.length === 0"
-            >
-              <!-- 读取不到或拉取中状态 -->
-              <option v-if="fetchedModels.length === 0" value="" disabled>
-                {{ fetchingModels ? '正在从接口拉取模型列表...' : '未读取到模型 (下拉已禁用，请点击刷新列表)' }}
-              </option>
-              <!-- 读取到的接口模型选项 -->
-              <template v-else>
-                <option value="" disabled>-- 请下拉选择模型 (共 {{ fetchedModels.length }} 个) --</option>
-                <option v-for="m in fetchedModels" :key="m" :value="m">{{ m }}</option>
+
+            <!-- 端点模式切换单选 -->
+            <div class="endpoint-mode-box">
+              <div class="mode-header">
+                <span class="mode-label">端点服务提供者：</span>
+                <div class="mode-radios">
+                  <label class="radio-chip" :class="{ selected: !hasCustomEndpoint }">
+                    <input
+                      type="radio"
+                      :name="'endpoint_mode_' + activeRoleDef.key"
+                      :value="false"
+                      v-model="hasCustomEndpoint"
+                    />
+                    <span>继承全局默认端点</span>
+                  </label>
+                  <label class="radio-chip" :class="{ selected: hasCustomEndpoint }">
+                    <input
+                      type="radio"
+                      :name="'endpoint_mode_' + activeRoleDef.key"
+                      :value="true"
+                      v-model="hasCustomEndpoint"
+                    />
+                    <span>独立端点 (如本地 Ollama)</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- 若启用自定义独立端点，展开独立 Base URL 与 API Key 输入 -->
+              <div v-if="hasCustomEndpoint" class="custom-endpoint-row">
+                <div class="field full">
+                  <div class="label-row">
+                    <label class="field-label">独立端点地址 (Base URL)</label>
+                    <div class="quick-preset-btns">
+                      <button
+                        type="button"
+                        class="preset-badge-btn"
+                        @click="fillOllamaEndpoint"
+                        title="填入本地 Docker Ollama API 地址"
+                      >
+                        填入本地 Ollama (11434)
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    type="text"
+                    v-model="currentRoleConfig.base_url"
+                    class="field-input font-mono"
+                    placeholder="http://localhost:11434/v1"
+                  />
+                  <span class="field-hint">
+                    本地 Ollama 请填 <code>http://localhost:11434/v1</code> 或 <code>http://ollama:11434/v1</code>
+                  </span>
+                </div>
+
+                <div class="field full">
+                  <label class="field-label">独立 API 密钥 (API Key)</label>
+                  <div class="key-wrapper">
+                    <input
+                      :type="showRoleKey ? 'text' : 'password'"
+                      v-model="currentRoleConfig.api_key"
+                      class="field-input font-mono"
+                      placeholder="本地 Ollama 可选填 ollama 或留空"
+                    />
+                    <button class="eye-toggle" @click="showRoleKey = !showRoleKey" type="button" :title="showRoleKey ? '隐藏' : '显示'">
+                      <svg v-if="!showRoleKey" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                      <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                        <line x1="1" y1="1" x2="23" y2="23" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 模型选择区域 -->
+            <div class="form-layout role-form-layout">
+              <!-- 下拉选择模型 -->
+              <div class="field half">
+                <div class="label-row">
+                  <label class="field-label">
+                    <span>从端点探测模型</span>
+                    <span class="opt-tag" :class="{ 'tag-disabled': roleModelList.length === 0 }">
+                      {{ roleModelList.length > 0 ? `${roleModelList.length} 个可用` : '未读取' }}
+                    </span>
+                  </label>
+                  <button
+                    class="text-btn"
+                    type="button"
+                    @click="refreshRoleModels"
+                    :disabled="fetchingRoleModels"
+                    title="从当前生效端点刷新模型列表"
+                  >
+                    <svg :class="{ spinning: fetchingRoleModels }" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="1 4 1 10 7 10" />
+                      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                    </svg>
+                    <span>{{ fetchingRoleModels ? '探测中...' : '在线探测' }}</span>
+                  </button>
+                </div>
+                <select
+                  v-model="selectedRoleDropdownModel"
+                  @change="onRoleDropdownChange"
+                  class="field-select"
+                  :disabled="fetchingRoleModels || roleModelList.length === 0"
+                >
+                  <option v-if="roleModelList.length === 0" value="" disabled>
+                    {{ fetchingRoleModels ? '正在从端点拉取模型列表...' : '未拉取到列表 (请点击在线探测，或在右侧手动输入)' }}
+                  </option>
+                  <template v-else>
+                    <option value="" disabled>-- 请下拉选择目标模型 (共 {{ roleModelList.length }} 个) --</option>
+                    <option v-for="m in roleModelList" :key="m" :value="m">{{ m }}</option>
+                  </template>
+                </select>
+                <span class="field-hint" v-if="roleModelList.length > 0">
+                  选择后自动同步至右侧模型名称输入框
+                </span>
+                <span class="field-hint text-hint-disabled" v-else>
+                  若端点不支持 /models 探测，可直接在右侧手动输入模型标识
+                </span>
+              </div>
+
+              <!-- 手动输入模型标识 -->
+              <div class="field half">
+                <label class="field-label">
+                  <span>模型标识名称 (Model Name)</span>
+                  <span class="mark-req">*</span>
+                </label>
+                <input
+                  type="text"
+                  v-model="currentRoleConfig.name"
+                  class="field-input font-mono"
+                  placeholder="例如 deepseek-chat, bge-m3, qwen2.5:1.5b"
+                />
+                <!-- 国产推荐快捷胶囊 -->
+                <div class="recommend-pills">
+                  <span class="rec-label">推荐国产模型:</span>
+                  <button
+                    v-for="rec in activeRoleDef.recommendedModels"
+                    :key="rec"
+                    type="button"
+                    class="rec-pill"
+                    @click="currentRoleConfig.name = rec"
+                  >
+                    {{ rec }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- 超参数：生成类模型专用 (Temperature / Max Tokens) -->
+              <template v-if="activeRoleDef.hasTemperature">
+                <div class="field half">
+                  <div class="label-row">
+                    <label class="field-label">采样温度 (Temperature)</label>
+                    <span class="mono-badge">{{ currentRoleConfig.temperature ?? 0.7 }}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1.5"
+                    step="0.05"
+                    v-model.number="currentRoleConfig.temperature"
+                    class="field-range"
+                  />
+                  <div class="scale-labels">
+                    <span>0.0 (严谨精确)</span>
+                    <span>0.7 (均衡)</span>
+                    <span>1.5 (发散多样)</span>
+                  </div>
+                </div>
               </template>
-            </select>
-            <span class="field-hint" v-if="fetchedModels.length > 0">
-              已从接口成功读取 <code>{{ fetchedModels.length }}</code> 个模型。选择后自动填入右侧
-            </span>
-            <span class="field-hint text-hint-disabled" v-else>
-              未读取到模型列表，下拉框已禁用交互。请点击右上角「刷新列表」，或在右侧直接手动输入
-            </span>
-          </div>
 
-          <!-- 元素 2: 手动输入模型名字 -->
-          <div class="field half">
-            <label class="field-label">
-              <span>手动输入模型名字 (Model)</span>
-              <span class="mark-req">*</span>
-            </label>
-            <input
-              type="text"
-              v-model="config.model"
-              @input="onModelInput"
-              class="field-input font-mono"
-              placeholder="例如 gpt-4o, deepseek-chat, 自定义模型名"
-            />
-            <span class="field-hint">最终生效的模型名称，支持直接手动键入私有微调或本地模型名</span>
-          </div>
+              <template v-if="activeRoleDef.hasMaxTokens">
+                <div class="field half">
+                  <label class="field-label">最大生成 Token 数 (Max Tokens)</label>
+                  <input
+                    type="number"
+                    min="256"
+                    max="128000"
+                    step="256"
+                    v-model.number="currentRoleConfig.max_tokens"
+                    class="field-input font-mono"
+                    placeholder="4096"
+                  />
+                </div>
+              </template>
 
-          <!-- 采样温度 Temperature -->
-          <div class="field half">
-            <div class="label-row">
-              <label class="field-label">采样温度 (Temperature)</label>
-              <span class="mono-badge">{{ config.temperature }}</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="2"
-              step="0.05"
-              v-model.number="config.temperature"
-              class="field-range"
-            />
-            <div class="scale-labels">
-              <span>0.0 (确定严谨)</span>
-              <span>1.0 (均衡)</span>
-              <span>2.0 (发散)</span>
-            </div>
-          </div>
+              <!-- 超参数：向量模型专用 (向量维度) -->
+              <template v-if="activeRoleDef.hasDimension">
+                <div class="field half">
+                  <label class="field-label">向量表征维度 (Embedding Dimension)</label>
+                  <input
+                    type="number"
+                    min="128"
+                    max="8192"
+                    step="128"
+                    v-model.number="currentRoleConfig.dimension"
+                    class="field-input font-mono"
+                    placeholder="1024"
+                  />
+                  <span class="field-hint">
+                    如 <code>bge-m3</code> 为 1024 维；<code>bge-base-zh</code> 为 768 维；OpenAI 默认 1536 维
+                  </span>
+                </div>
+              </template>
 
-          <!-- Max Tokens -->
-          <div class="field half">
-            <label class="field-label">单次最大生成 Token (Max Tokens)</label>
-            <input
-              type="number"
-              min="256"
-              max="128000"
-              step="256"
-              v-model.number="config.max_tokens"
-              class="field-input font-mono"
-              placeholder="4096"
-            />
-          </div>
-
-          <!-- Top P -->
-          <div class="field half">
-            <div class="label-row">
-              <label class="field-label">核采样 (Top P)</label>
-              <span class="mono-badge">{{ config.top_p }}</span>
-            </div>
-            <input
-              type="range"
-              min="0.1"
-              max="1"
-              step="0.05"
-              v-model.number="config.top_p"
-              class="field-range"
-            />
-            <div class="scale-labels">
-              <span>0.1</span>
-              <span>1.0</span>
+              <!-- 超参数：重排模型专用 (Top-N 精选截取数) -->
+              <template v-if="activeRoleDef.hasTopN">
+                <div class="field half">
+                  <div class="label-row">
+                    <label class="field-label">精选返回文档块数量 (Top-N)</label>
+                    <span class="mono-badge">{{ currentRoleConfig.top_n ?? 5 }} 块</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1"
+                    max="20"
+                    step="1"
+                    v-model.number="currentRoleConfig.top_n"
+                    class="field-range"
+                  />
+                  <div class="scale-labels">
+                    <span>1 块 (极致精准)</span>
+                    <span>5 块 (标准推荐)</span>
+                    <span>20 块 (宽泛召回)</span>
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
+        </section>
 
-          <!-- Organization ID -->
-          <div class="field half">
-            <label class="field-label">
-              <span>组织 ID (Organization ID)</span>
-              <span class="opt-tag">Optional</span>
-            </label>
-            <input
-              type="text"
-              v-model="config.organization"
-              class="field-input font-mono"
-              placeholder="org-..."
-            />
+        <!-- 底部全局操作条 -->
+        <div class="actions-strip">
+          <div class="actions-left">
+            <button class="btn btn-secondary" @click="applyHouseholdPreset">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
+              </svg>
+              <span>一键套用「家用机黄金组合」预设</span>
+            </button>
+            <button class="btn btn-secondary" @click="resetDefaults">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="1 4 1 10 7 10" />
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+              </svg>
+              <span>恢复默认</span>
+            </button>
           </div>
 
-          <!-- Project ID -->
-          <div class="field half">
-            <label class="field-label">
-              <span>项目 ID (Project ID)</span>
-              <span class="opt-tag">Optional</span>
-            </label>
-            <input
-              type="text"
-              v-model="config.project_id"
-              class="field-input font-mono"
-              placeholder="proj_..."
-            />
+          <div class="actions-right">
+            <button class="btn btn-primary" :disabled="saving" @click="saveSettings">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+              <span>{{ saving ? '保存中...' : '保存全部模型配置' }}</span>
+            </button>
           </div>
         </div>
-      </section>
-
-      <!-- 底部保存条 -->
-      <div class="actions-strip">
-        <button class="btn btn-secondary" @click="resetDefaults">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="1 4 1 10 7 10" />
-            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-          </svg>
-          <span>恢复默认</span>
-        </button>
-        <button class="btn btn-primary" :disabled="saving" @click="saveSettings">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-            <polyline points="17 21 17 13 7 13 7 21" />
-            <polyline points="7 3 7 8 15 8" />
-          </svg>
-          <span>{{ saving ? '保存中...' : '保存配置' }}</span>
-        </button>
-      </div>
       </template>
 
       <!-- 视图 2: 工程设计文档 GitHub README 风格预览 -->
@@ -286,7 +454,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import DocsPreview from '@/components/DocsPreview.vue'
 import {
@@ -295,6 +463,7 @@ import {
   testModelConnection,
   fetchRemoteModels,
   OpenAIConfig,
+  ModelRoleConfig,
 } from '@/api/settings'
 
 const route = useRoute()
@@ -315,42 +484,361 @@ watch(
   }
 )
 
-const showKey = ref(false)
-const testing = ref(false)
-const saving = ref(false)
-const fetchingModels = ref(false)
-const toastMessage = ref('')
-const selectedDropdownModel = ref('')
-const fetchedModels = ref<string[]>([])
+// 角色元数据定义
+interface RoleDef {
+  key: 'chat' | 'digest' | 'embedding' | 'rerank' | 'expansion'
+  label: string
+  description: string
+  icon: string
+  recommendedModels: string[]
+  hasTemperature?: boolean
+  hasMaxTokens?: boolean
+  hasDimension?: boolean
+  hasTopN?: boolean
+}
 
+const roleDefs: RoleDef[] = [
+  {
+    key: 'chat',
+    label: '对话主模型',
+    description: '面向用户直接交互，负责多轮问答、事实核查与综合推理，建议使用云端旗舰或 14B+ 大模型',
+    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+    recommendedModels: ['deepseek-chat', 'qwen-max', 'qwen2.5:72b', 'gpt-4o'],
+    hasTemperature: true,
+    hasMaxTokens: true,
+  },
+  {
+    key: 'digest',
+    label: '文件消化模型',
+    description: '文档上传后负责长文本解析、段落总结、核心概念提炼与实体结构化知识库抽取',
+    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`,
+    recommendedModels: ['qwen-plus', 'deepseek-chat', 'gpt-4o-mini', 'qwen2.5:14b'],
+    hasTemperature: true,
+    hasMaxTokens: true,
+  },
+  {
+    key: 'embedding',
+    label: '向量编码模型',
+    description: '将文档切片转化为密集嵌入向量（Dense Embedding），支撑毫秒级粗排语义检索召回',
+    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+    recommendedModels: ['bge-m3', 'bge-base-zh', 'text-embedding-3-small'],
+    hasDimension: true,
+  },
+  {
+    key: 'rerank',
+    label: '语义重排模型',
+    description: '基于 Cross-Encoder 架构对初筛候选文本块打分，精准过滤 80% 无关噪声碎片',
+    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+    recommendedModels: ['bge-reranker-v2-m3', 'bge-reranker-large'],
+    hasTopN: true,
+  },
+  {
+    key: 'expansion',
+    label: '查询扩展模型',
+    description: '将用户口语提问进行多角度扩写、专业同义词丰富与子问题拆解，快如闪电',
+    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>`,
+    recommendedModels: ['qwen2.5:1.5b', 'qwen2.5:3b', 'qwen2.5:0.5b'],
+    hasTemperature: true,
+  },
+]
+
+type RoleKey = 'chat' | 'digest' | 'embedding' | 'rerank' | 'expansion'
+const currentRoleKey = ref<RoleKey>('chat')
+
+const showGlobalKey = ref(false)
+const showRoleKey = ref(false)
+const testingGlobal = ref(false)
+const testingRole = ref(false)
+const saving = ref(false)
+const fetchingRoleModels = ref(false)
+const toastMessage = ref('')
+
+// 模型列表缓存字典 (以 endpoint url 为 key)
+const endpointModelsCache = ref<Record<string, string[]>>({})
+const selectedRoleDropdownModel = ref('')
+
+// 主配置对象
 const config = ref<OpenAIConfig>({
-  base_url: 'https://api.openai.com/v1',
+  base_url: 'https://api.deepseek.com/v1',
   api_key: '',
-  model: 'gpt-4o',
+  model: 'deepseek-chat',
   temperature: 0.7,
   max_tokens: 4096,
   top_p: 1.0,
   organization: '',
   project_id: '',
+  chat: {
+    name: 'deepseek-chat',
+    base_url: '',
+    api_key: '',
+    temperature: 0.7,
+    max_tokens: 4096,
+    description: '主问答对话模型',
+  },
+  digest: {
+    name: 'qwen-plus',
+    base_url: '',
+    api_key: '',
+    temperature: 0.3,
+    max_tokens: 4096,
+    description: '文件消化解析模型',
+  },
+  embedding: {
+    name: 'bge-m3',
+    base_url: 'http://localhost:11434/v1',
+    api_key: 'ollama',
+    dimension: 1024,
+    description: '向量嵌入模型',
+  },
+  rerank: {
+    name: 'bge-reranker-v2-m3',
+    base_url: 'http://localhost:11434',
+    api_key: 'ollama',
+    top_n: 5,
+    description: '语义重排模型',
+  },
+  expansion: {
+    name: 'qwen2.5:1.5b',
+    base_url: 'http://localhost:11434/v1',
+    api_key: 'ollama',
+    temperature: 0.3,
+    description: '查询扩展模型',
+  },
 })
 
-function syncDropdownSelection() {
-  const currentModel = config.value.model?.trim()
-  if (currentModel && fetchedModels.value.includes(currentModel)) {
-    selectedDropdownModel.value = currentModel
+// 计算当前角色的元数据与配置
+const activeRoleDef = computed(() => {
+  return roleDefs.find((r) => r.key === currentRoleKey.value) || roleDefs[0]
+})
+
+const currentRoleConfig = computed<ModelRoleConfig>(() => {
+  const key = currentRoleKey.value
+  if (!config.value[key]) {
+    config.value[key] = {
+      name: '',
+      base_url: '',
+      api_key: '',
+      temperature: 0.7,
+    }
+  }
+  return config.value[key]!
+})
+
+// 当前角色是否使用独立端点
+const hasCustomEndpoint = computed<boolean>({
+  get() {
+    return !!(currentRoleConfig.value.base_url && currentRoleConfig.value.base_url.trim().length > 0)
+  },
+  set(val: boolean) {
+    if (!val) {
+      currentRoleConfig.value.base_url = ''
+      currentRoleConfig.value.api_key = ''
+    } else {
+      if (!currentRoleConfig.value.base_url) {
+        if (currentRoleKey.value === 'rerank') {
+          currentRoleConfig.value.base_url = 'http://localhost:11434'
+        } else if (['embedding', 'expansion'].includes(currentRoleKey.value)) {
+          currentRoleConfig.value.base_url = 'http://localhost:11434/v1'
+        } else {
+          currentRoleConfig.value.base_url = config.value.base_url || 'http://localhost:11434/v1'
+        }
+      }
+    }
+  },
+})
+
+// 计算当前角色有效端点地址
+const currentEffectiveEndpoint = computed(() => {
+  if (currentRoleConfig.value.base_url?.trim()) {
+    return currentRoleConfig.value.base_url.trim()
+  }
+  return config.value.base_url.trim()
+})
+
+const currentEffectiveApiKey = computed(() => {
+  if (currentRoleConfig.value.base_url?.trim()) {
+    return currentRoleConfig.value.api_key?.trim() || ''
+  }
+  return config.value.api_key.trim()
+})
+
+// 当前角色可用的模型下拉选项
+const roleModelList = computed(() => {
+  const url = currentEffectiveEndpoint.value
+  return endpointModelsCache.value[url] || []
+})
+
+// 监听角色切换或模型改变，同步下拉框选中状态
+watch(
+  [() => currentRoleKey.value, () => currentRoleConfig.value.name, roleModelList],
+  () => {
+    const name = currentRoleConfig.value.name?.trim() || ''
+    if (name && roleModelList.value.includes(name)) {
+      selectedRoleDropdownModel.value = name
+    } else {
+      selectedRoleDropdownModel.value = ''
+    }
+  },
+  { immediate: true }
+)
+
+function getRoleModelName(roleKey: RoleKey): string {
+  return config.value[roleKey]?.name || ''
+}
+
+function getRoleEndpointType(roleKey: RoleKey): string {
+  const customUrl = config.value[roleKey]?.base_url?.trim() || ''
+  if (customUrl) {
+    if (customUrl.includes('11434')) return 'type-ollama'
+    return 'type-custom'
+  }
+  return 'type-global'
+}
+
+function getRoleEndpointLabel(roleKey: RoleKey): string {
+  const customUrl = config.value[roleKey]?.base_url?.trim() || ''
+  if (customUrl) {
+    if (customUrl.includes('11434')) return '本地 Ollama'
+    return '独立端点'
+  }
+  return '继承全局'
+}
+
+function onRoleDropdownChange() {
+  if (selectedRoleDropdownModel.value) {
+    currentRoleConfig.value.name = selectedRoleDropdownModel.value
+  }
+}
+
+function fillOllamaEndpoint() {
+  if (currentRoleKey.value === 'rerank') {
+    currentRoleConfig.value.base_url = 'http://localhost:11434'
   } else {
-    selectedDropdownModel.value = ''
+    currentRoleConfig.value.base_url = 'http://localhost:11434/v1'
+  }
+  currentRoleConfig.value.api_key = 'ollama'
+  showToast('已填入本地 Ollama 端点地址')
+}
+
+function showToast(msg: string) {
+  toastMessage.value = msg
+  setTimeout(() => {
+    toastMessage.value = ''
+  }, 3000)
+}
+
+// 刷新指定端点的模型列表
+async function fetchModelsForUrl(url: string, apiKey: string, silent = false): Promise<string[]> {
+  if (!url) return []
+  try {
+    const res = await fetchRemoteModels({ base_url: url, api_key: apiKey })
+    if (res.success && res.models && res.models.length > 0) {
+      endpointModelsCache.value[url] = res.models
+      if (!silent) {
+        showToast(`成功探测到 ${res.models.length} 个可用模型`)
+      }
+      return res.models
+    } else {
+      endpointModelsCache.value[url] = []
+      if (!silent) {
+        showToast(res.message || '端点未返回可用模型列表')
+      }
+    }
+  } catch (err: any) {
+    endpointModelsCache.value[url] = []
+    if (!silent) {
+      showToast(`模型探测失败: ${err.message}`)
+    }
+  }
+  return []
+}
+
+async function refreshRoleModels() {
+  const url = currentEffectiveEndpoint.value
+  const key = currentEffectiveApiKey.value
+  if (!url) {
+    showToast('请先配置该角色的端点地址')
+    return
+  }
+  fetchingRoleModels.value = true
+  try {
+    await fetchModelsForUrl(url, key, false)
+  } finally {
+    fetchingRoleModels.value = false
+  }
+}
+
+async function testGlobalConnection() {
+  if (!config.value.base_url) {
+    showToast('请先填写全局 API 基础端点 (Base URL)')
+    return
+  }
+  testingGlobal.value = true
+  try {
+    const res = await testModelConnection({
+      base_url: config.value.base_url,
+      api_key: config.value.api_key,
+      model: config.value.chat?.name || config.value.model,
+    })
+    if (res.success) {
+      if (res.models && res.models.length > 0) {
+        endpointModelsCache.value[config.value.base_url] = res.models
+      }
+      showToast(`全局端点连通成功 (${res.latency_ms}ms): ${res.message}`)
+    } else {
+      showToast(`连通失败: ${res.message}`)
+    }
+  } catch (err: any) {
+    showToast(`连接测试出错: ${err.message}`)
+  } finally {
+    testingGlobal.value = false
+  }
+}
+
+async function testCurrentRoleConnection() {
+  const url = currentEffectiveEndpoint.value
+  const key = currentEffectiveApiKey.value
+  if (!url) {
+    showToast('请先配置该角色的端点地址')
+    return
+  }
+  testingRole.value = true
+  try {
+    const res = await testModelConnection({
+      base_url: url,
+      api_key: key,
+      model: currentRoleConfig.value.name,
+    })
+    if (res.success) {
+      if (res.models && res.models.length > 0) {
+        endpointModelsCache.value[url] = res.models
+      }
+      showToast(`[${activeRoleDef.value.label}] 端点连通成功 (${res.latency_ms}ms)`)
+    } else {
+      showToast(`连通失败: ${res.message}`)
+    }
+  } catch (err: any) {
+    showToast(`连接测试出错: ${err.message}`)
+  } finally {
+    testingRole.value = false
   }
 }
 
 async function loadConfig() {
   try {
     const data = await fetchModelConfig()
-    config.value = { ...data }
-    syncDropdownSelection()
-    // 若已有配置好的基础端点与密钥，尝试在线读取模型列表
-    if (config.value.base_url && config.value.api_key) {
-      fetchModelsOnline(true)
+    config.value = {
+      ...data,
+      chat: data.chat || { name: data.model || 'deepseek-chat', temperature: 0.7, max_tokens: 4096 },
+      digest: data.digest || { name: 'qwen-plus', temperature: 0.3, max_tokens: 4096 },
+      embedding: data.embedding || { name: 'bge-m3', base_url: 'http://localhost:11434/v1', api_key: 'ollama', dimension: 1024 },
+      rerank: data.rerank || { name: 'bge-reranker-v2-m3', base_url: 'http://localhost:11434', api_key: 'ollama', top_n: 5 },
+      expansion: data.expansion || { name: 'qwen2.5:1.5b', base_url: 'http://localhost:11434/v1', api_key: 'ollama', temperature: 0.3 },
+    }
+
+    // 静默尝试探测全局端点模型列表
+    if (config.value.base_url) {
+      fetchModelsForUrl(config.value.base_url, config.value.api_key, true)
     }
   } catch (err: any) {
     showToast(`加载 config.yaml 失败: ${err.message}`)
@@ -361,108 +849,68 @@ onMounted(() => {
   loadConfig()
 })
 
-function onDropdownChange() {
-  if (selectedDropdownModel.value) {
-    config.value.model = selectedDropdownModel.value
-  }
-}
-
-function onModelInput() {
-  syncDropdownSelection()
-}
-
-function showToast(msg: string) {
-  toastMessage.value = msg
-  setTimeout(() => {
-    toastMessage.value = ''
-  }, 2800)
-}
-
-async function fetchModelsOnline(silent = false) {
-  if (!config.value.base_url) {
-    if (!silent) showToast('请先填写 API 接口地址 (Base URL)')
-    return
-  }
-  fetchingModels.value = true
-  try {
-    const res = await fetchRemoteModels({
-      base_url: config.value.base_url,
-      api_key: config.value.api_key,
-    })
-    if (res.success && res.models && res.models.length > 0) {
-      fetchedModels.value = res.models
-      // 若当前未填写模型名称，则默认选中第一个
-      if (!config.value.model) {
-        config.value.model = res.models[0]
-      }
-      syncDropdownSelection()
-      if (!silent) {
-        showToast(`成功读取到 ${res.models.length} 个可用模型，已更新下拉选项！`)
-      }
-    } else {
-      fetchedModels.value = []
-      syncDropdownSelection()
-      if (!silent) {
-        showToast(res.message || '端点未返回可用模型列表，下拉框已禁用')
-      }
-    }
-  } catch (err: any) {
-    fetchedModels.value = []
-    syncDropdownSelection()
-    if (!silent) {
-      showToast(`拉取模型失败: ${err.message}`)
-    }
-  } finally {
-    fetchingModels.value = false
-  }
-}
-
-function refreshModels() {
-  fetchModelsOnline(false)
-}
-
-async function testConnection() {
-  if (!config.value.base_url) {
-    showToast('请先填写 API 接口地址 (Base URL)')
-    return
-  }
-  testing.value = true
-  try {
-    const res = await testModelConnection({
-      base_url: config.value.base_url,
-      api_key: config.value.api_key,
-      model: config.value.model,
-    })
-    if (res.success) {
-      if (res.models && res.models.length > 0) {
-        fetchedModels.value = res.models
-        syncDropdownSelection()
-      }
-      showToast(`连通成功 (${res.latency_ms}ms): ${res.message}`)
-    } else {
-      showToast(`连通失败: ${res.message}`)
-    }
-  } catch (err: any) {
-    showToast(`连接测试出错: ${err.message}`)
-  } finally {
-    testing.value = false
-  }
-}
-
 async function saveSettings() {
-  if (!config.value.base_url || !config.value.model) {
-    showToast('Base URL 和模型名称不能为空')
+  if (!config.value.base_url) {
+    showToast('全局 Base URL 不能为空')
+    return
+  }
+  if (!config.value.chat?.name) {
+    showToast('对话主模型名称不能为空')
     return
   }
   saving.value = true
   try {
-    const res = await saveModelConfig(config.value)
-    showToast(`配置已成功写入 config.yaml，并对对话即刻生效！`)
+    // 确保根 model 字段与 chat.name 同步
+    config.value.model = config.value.chat.name
+    await saveModelConfig(config.value)
+    showToast('全部模型角色配置已成功保存写入 config.yaml，实时生效！')
   } catch (err: any) {
     showToast(`保存失败: ${err.message}`)
   } finally {
     saving.value = false
   }
+}
+
+function applyHouseholdPreset() {
+  config.value.base_url = 'https://api.deepseek.com/v1'
+  config.value.chat = {
+    name: 'deepseek-chat',
+    base_url: '',
+    api_key: '',
+    temperature: 0.7,
+    max_tokens: 4096,
+    description: '主问答对话模型',
+  }
+  config.value.digest = {
+    name: 'qwen-plus',
+    base_url: '',
+    api_key: '',
+    temperature: 0.3,
+    max_tokens: 4096,
+    description: '文件消化解析模型',
+  }
+  config.value.embedding = {
+    name: 'bge-m3',
+    base_url: 'http://localhost:11434/v1',
+    api_key: 'ollama',
+    dimension: 1024,
+    description: '向量嵌入模型',
+  }
+  config.value.rerank = {
+    name: 'bge-reranker-v2-m3',
+    base_url: 'http://localhost:11434',
+    api_key: 'ollama',
+    top_n: 5,
+    description: '语义重排模型',
+  }
+  config.value.expansion = {
+    name: 'qwen2.5:1.5b',
+    base_url: 'http://localhost:11434/v1',
+    api_key: 'ollama',
+    temperature: 0.3,
+    description: '查询扩展模型',
+  }
+  showToast('已套用「家用机黄金组合」预设（云端 DeepSeek + 本地 Ollama 三小模型），请点击保存！')
 }
 
 function resetDefaults() {
@@ -475,10 +923,40 @@ function resetDefaults() {
     top_p: 1.0,
     organization: '',
     project_id: '',
+    chat: {
+      name: 'gpt-4o',
+      base_url: '',
+      api_key: '',
+      temperature: 0.7,
+      max_tokens: 4096,
+    },
+    digest: {
+      name: 'gpt-4o-mini',
+      base_url: '',
+      api_key: '',
+      temperature: 0.3,
+      max_tokens: 4096,
+    },
+    embedding: {
+      name: 'text-embedding-3-small',
+      base_url: '',
+      api_key: '',
+      dimension: 1536,
+    },
+    rerank: {
+      name: 'bge-reranker-v2-m3',
+      base_url: 'http://localhost:11434',
+      api_key: 'ollama',
+      top_n: 5,
+    },
+    expansion: {
+      name: 'gpt-4o-mini',
+      base_url: '',
+      api_key: '',
+      temperature: 0.3,
+    },
   }
-  fetchedModels.value = []
-  syncDropdownSelection()
-  showToast('已重置为默认配置，点击保存后写入 config.yaml')
+  showToast('已重置为官方标准配置，点击保存后写入 config.yaml')
 }
 </script>
 
@@ -548,7 +1026,7 @@ function resetDefaults() {
   flex: 1;
   padding: 24px 32px;
   overflow-y: auto;
-  max-width: 900px;
+  max-width: 980px;
   width: 100%;
   margin: 0 auto;
   display: flex;
@@ -573,7 +1051,7 @@ function resetDefaults() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   padding-bottom: 14px;
   border-bottom: 1px solid var(--border-light);
 }
@@ -595,16 +1073,31 @@ function resetDefaults() {
   justify-content: center;
 }
 
+.card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .card-title {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
+.badge-role {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background-color: rgba(0, 0, 0, 0.06);
+  color: var(--text-secondary);
+}
+
 .card-desc {
   font-size: 11px;
   color: var(--text-muted);
-  margin-top: 1px;
+  margin-top: 2px;
 }
 
 .form-layout {
@@ -745,12 +1238,6 @@ function resetDefaults() {
   color: var(--text-faint);
 }
 
-.model-select-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 .key-wrapper {
   position: relative;
   display: flex;
@@ -787,11 +1274,291 @@ function resetDefaults() {
   font-family: var(--font-mono);
 }
 
+/* 角色导航胶囊栏 */
+.roles-section-card {
+  padding-bottom: 24px;
+}
+
+.section-title-bar {
+  margin-bottom: 16px;
+}
+
+.role-selector-pills {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.role-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.role-pill:hover {
+  border-color: var(--border-strong);
+  background-color: var(--bg-surface);
+}
+
+.role-pill.active {
+  background-color: var(--bg-surface);
+  border-color: var(--primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.pill-icon {
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.role-pill.active .pill-icon {
+  color: var(--primary);
+}
+
+.pill-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+}
+
+.pill-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.pill-model-tag {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pill-endpoint-badge {
+  font-size: 9px;
+  font-weight: 500;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-top: 4px;
+}
+
+.pill-endpoint-badge.type-global {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: var(--text-muted);
+}
+
+.pill-endpoint-badge.type-ollama {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.pill-endpoint-badge.type-custom {
+  background-color: rgba(59, 130, 246, 0.1);
+  color: #2563eb;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+/* 角色详情面板 */
+.role-detail-panel {
+  background-color: var(--bg-app);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 18px 20px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.panel-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.panel-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+}
+
+.panel-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.role-code-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  background-color: var(--bg-subtle);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.panel-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+/* 端点模式切换 */
+.endpoint-mode-box {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+
+.mode-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.mode-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.mode-radios {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.radio-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 3px 9px;
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  cursor: pointer;
+  background-color: var(--bg-app);
+  transition: all 0.15s ease;
+}
+
+.radio-chip.selected {
+  border-color: var(--primary);
+  color: var(--text-primary);
+  background-color: var(--bg-subtle);
+  font-weight: 600;
+}
+
+.radio-chip input {
+  accent-color: var(--primary);
+  margin: 0;
+}
+
+.custom-endpoint-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-light);
+}
+
+.preset-badge-btn {
+  font-size: 10px;
+  color: #059669;
+  background-color: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 3px;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+
+.preset-badge-btn:hover {
+  background-color: rgba(16, 185, 129, 0.18);
+}
+
+/* 推荐模型胶囊列表 */
+.recommend-pills {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.rec-label {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.rec-pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  padding: 1px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rec-pill:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* 底部操作条 */
 .actions-strip {
   display: flex;
-  justify-content: flex-end;
-  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 30px;
+  gap: 12px;
+}
+
+.actions-left,
+.actions-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .btn {
@@ -802,11 +1569,13 @@ function resetDefaults() {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  cursor: pointer;
 }
 
 .btn-primary {
   background-color: var(--primary);
   color: var(--primary-text);
+  border: 1px solid transparent;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -851,5 +1620,18 @@ function resetDefaults() {
 .toast-leave-to {
   opacity: 0;
   transform: translateY(8px);
+}
+
+@media (max-width: 860px) {
+  .role-selector-pills {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .form-layout {
+    grid-template-columns: 1fr;
+  }
+  .actions-strip {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 </style>

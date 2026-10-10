@@ -1,5 +1,54 @@
 services:
-  # 后端 FastAPI + LangGraph 智能体服务
+  # ============================================================================
+  # 1. 本地小模型推理服务 (Ollama)
+  #    - 扩展模型: qwen2.5:1.5b (阿里通义千问)
+  #    - 向量模型: bge-m3 (智源 BAAI)
+  #    - 重排模型: bge-reranker-v2-m3 (智源 BAAI)
+  # ============================================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: qtllmwiki-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      # 持久化已下载的模型权重，避免每次重启容器重复下载
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - app-network
+
+  # 自动拉取国内主流三小模型的初始化作业 (执行完毕后自动退出)
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: qtllmwiki-ollama-init
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo ">>> [1/3] 正在拉取国产开源使用量第一的扩展小模型: 通义千问 qwen2.5:1.5b..."
+        ollama pull qwen2.5:1.5b
+        echo ">>> [2/3] 正在拉取国产开源使用量第一的向量模型: 智源 BAAI bge-m3..."
+        ollama pull bge-m3
+        echo ">>> [3/3] 正在拉取国产开源使用量第一的重排模型: 智源 BAAI bge-reranker-v2-m3..."
+        ollama pull bge-reranker-v2-m3
+        echo ">>> [OK] 三个国产本地小模型已全部拉取就绪！"
+    networks:
+      - app-network
+
+  # ============================================================================
+  # 2. 后端 FastAPI + LangGraph 智能体服务
+  # ============================================================================
   backend:
     build:
       context: ./backend
@@ -13,11 +62,17 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=8000
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - LOCAL_EXPANSION_MODEL=qwen2.5:1.5b
+      - LOCAL_EMBEDDING_MODEL=bge-m3
+      - LOCAL_RERANK_MODEL=bge-reranker-v2-m3
     volumes:
       # 将宿主机 document 目录双向挂载映射到容器内，保证上传、删除与 Wiki 文档实时同步且持久化
       - ./backend/app/document:/app/app/document
       # 将 config.yaml 挂载映射到容器内，保障配置修改实时持久化
       - ./backend/config.yaml:/app/config.yaml
+      # 将 prompts 提示词目录挂载映射到容器内，保障模板修改热生效
+      - ./backend/app/prompts:/app/app/prompts
       # 将工程设计文档目录挂载到容器内，供前端设置页面只读查阅
       - ./docs:/app/docs:ro
     healthcheck:
@@ -26,10 +81,15 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+    depends_on:
+      ollama:
+        condition: service_healthy
     networks:
       - app-network
 
-  # 前端 Vue 3 + Nginx 服务（自动代理 /api 到后端，支持 SSE 流式）
+  # ============================================================================
+  # 3. 前端 Vue 3 + Nginx 服务（自动代理 /api 到后端，支持 SSE 流式）
+  # ============================================================================
   frontend:
     build:
       context: ./frontend
@@ -44,6 +104,10 @@ services:
         condition: service_healthy
     networks:
       - app-network
+
+volumes:
+  ollama_models:
+    name: qtllmwiki-ollama-models
 
 networks:
   app-network:
