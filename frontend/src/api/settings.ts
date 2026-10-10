@@ -46,3 +46,29 @@ export async function fetchRemoteModels(data: {
 }): Promise<TestConnectionResult> {
   return apiClient.post('/settings/models', data)
 }
+
+export interface DesignDocMeta {
+  id: string
+  filename: string
+  title: string
+  badge: string
+  description: string
+  size_bytes: number
+  line_count: number
+  updated_at: string
+}
+
+export interface DesignDocDetail extends DesignDocMeta {
+  content: string
+}
+
+/** 获取系统工程设计文档列表 */
+export async function fetchDesignDocs(): Promise<DesignDocMeta[]> {
+  return apiClient.get('/settings/docs')
+}
+
+/** 获取指定系统工程设计文档的 Markdown 详细正文 */
+export async function fetchDesignDocDetail(docId: string): Promise<DesignDocDetail> {
+  return apiClient.get(`/settings/docs/${docId}`)
+}
+

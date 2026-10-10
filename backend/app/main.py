@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from typing import Optional
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -75,6 +75,12 @@ def create_app(custom_settings: Optional[Settings] = None, custom_runtime: Optio
 
         @app.get("/{full_path:path}", include_in_schema=False)
         async def serve_spa(full_path: str):
+            # 未命中的 API 路径不回退到 index.html，直接返回 404
+            clean_path = full_path.lstrip("/")
+            api_prefix = settings.API_PREFIX.strip("/")
+            if clean_path.startswith("api/") or (api_prefix and clean_path.startswith(api_prefix)):
+                raise HTTPException(status_code=404, detail="API route not found")
+
             target = FRONTEND_DIST_DIR / full_path
             if target.is_file():
                 return FileResponse(str(target))

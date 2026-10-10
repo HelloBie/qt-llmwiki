@@ -3,11 +3,17 @@ from fastapi.testclient import TestClient
 
 
 def test_list_files(client: TestClient):
-    """测试获取 raw/origin 文件列表"""
+    """测试浏览 llm-wiki 根目录，而不是只看 raw/origin"""
     res = client.get("/api/v1/files")
     assert res.status_code == 200
-    files = res.json()
-    assert isinstance(files, list)
+    data = res.json()
+    assert data["root"] == "llm-wiki"
+    assert data["path"] == ""
+    assert data["parent"] is None
+    names = {entry["name"]: entry for entry in data["entries"]}
+    assert "raw" in names and names["raw"]["kind"] == "dir"
+    assert "wiki" in names and names["wiki"]["kind"] == "dir"
+    assert "documents.db" not in names
 
 
 def test_upload_preview_download_delete_cycle(client: TestClient):
@@ -23,10 +29,10 @@ def test_upload_preview_download_delete_cycle(client: TestClient):
     assert len(uploaded_data) >= 1
     assert any(f["name"] == test_filename for f in uploaded_data)
 
-    # 2. 验证列表中存在
-    list_res = client.get("/api/v1/files")
+    # 2. 验证 raw/origin 列表中存在
+    list_res = client.get("/api/v1/files", params={"path": "raw/origin"})
     assert list_res.status_code == 200
-    assert any(f["name"] == test_filename for f in list_res.json())
+    assert any(f["name"] == test_filename for f in list_res.json()["entries"])
 
     # 3. 预览文本内容
     preview_res = client.get(f"/api/v1/files/preview/{test_filename}")
@@ -101,10 +107,10 @@ def test_file2md_single_conversion_and_fulltext_access(client: TestClient):
         assert 'converter: "file2md"' in md_text
         assert "Line 1: System requirements" in md_text
 
-        # 5. 检查文件列表中的 is_converted 状态标记
-        list_res = client.get("/api/v1/files")
+        # 5. 检查 raw/origin 列表中的 is_converted 状态标记
+        list_res = client.get("/api/v1/files", params={"path": "raw/origin"})
         assert list_res.status_code == 200
-        for f in list_res.json():
+        for f in list_res.json()["entries"]:
             if f["name"] == test_filename:
                 assert f["is_converted"] is True
                 assert f["converted_target"] == target_name
@@ -274,6 +280,33 @@ def test_document_records_database_and_shared_id(client: TestClient):
 
         records_final = client.get("/api/v1/files/records").json()
         assert not any(r["origin_filename"] == test_filename for r in records_final)
+
+
+def test_browse_whole_llm_wiki_and_reject_traversal(client: TestClient):
+    """文件管理可以进入 raw 与 wiki，并拒绝跳出 llm-wiki 根目录"""
+    raw_res = client.get("/api/v1/files", params={"path": "raw"})
+    assert raw_res.status_code == 200
+    raw_names = {entry["name"] for entry in raw_res.json()["entries"]}
+    assert {"origin", "fulltext"} <= raw_names
+
+    wiki_res = client.get("/api/v1/files", params={"path": "wiki"})
+    assert wiki_res.status_code == 200
+    wiki_body = wiki_res.json()
+    assert wiki_body["parent"] == ""
+    assert any(entry["name"] == "index.md" and entry["kind"] == "file" for entry in wiki_body["entries"])
+
+    preview = client.get("/api/v1/files/preview", params={"path": "wiki/index.md"})
+    assert preview.status_code == 200
+    preview_data = preview.json()
+    assert preview_data["is_binary"] is False
+    assert "LLM-Wiki" in preview_data["content"]
+    assert preview_data["rel_path"] == "wiki/index.md"
+    assert preview_data["in_origin"] is False
+
+    escaped = client.get("/api/v1/files", params={"path": "../"})
+    assert escaped.status_code == 400
+    escaped_file = client.get("/api/v1/files/preview", params={"path": "../../config.yaml"})
+    assert escaped_file.status_code == 400
 
 
 

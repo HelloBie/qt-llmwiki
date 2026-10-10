@@ -18,6 +18,8 @@ services:
       - ./backend/app/document:/app/app/document
       # 将 config.yaml 挂载映射到容器内，保障配置修改实时持久化
       - ./backend/config.yaml:/app/config.yaml
+      # 将工程设计文档目录挂载到容器内，供前端设置页面只读查阅
+      - ./docs:/app/docs:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\" || exit 1"]
       interval: 10s

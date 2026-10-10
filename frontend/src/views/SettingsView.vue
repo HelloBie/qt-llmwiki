@@ -2,13 +2,44 @@
   <div class="settings-viewport">
     <header class="settings-topbar">
       <div>
-        <h2 class="page-title">模型设置</h2>
-        <p class="page-sub">管理 OpenAI 兼容协议的基础端点、凭证密钥及模型推理超参数</p>
+        <h2 class="page-title">{{ activeTab === 'model' ? '模型设置' : '系统工程设计文档' }}</h2>
+        <p class="page-sub">
+          {{
+            activeTab === 'model'
+              ? '管理 OpenAI 兼容协议的基础端点、凭证密钥及模型推理超参数'
+              : '查阅系统概要设计、详细设计、数据库设计与接口规范 (GitHub 风格实时预览)'
+          }}
+        </p>
+      </div>
+
+      <!-- 设置子导航切换器 -->
+      <div class="settings-tab-group">
+        <button
+          :class="['settings-tab-btn', { active: activeTab === 'model' }]"
+          @click="switchTab('model')"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+          <span>模型配置</span>
+        </button>
+        <button
+          :class="['settings-tab-btn', { active: activeTab === 'docs' }]"
+          @click="switchTab('docs')"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+          </svg>
+          <span>工程设计文档</span>
+        </button>
       </div>
     </header>
 
-    <div class="settings-scroll-area">
-      <!-- OpenAI 配置卡片 -->
+    <div :class="['settings-scroll-area', { 'wide-layout': activeTab === 'docs' }]">
+      <!-- 视图 1: 模型配置 -->
+      <template v-if="activeTab === 'model'">
       <section class="card">
         <div class="card-header">
           <div class="card-header-left">
@@ -237,6 +268,12 @@
           <span>{{ saving ? '保存中...' : '保存配置' }}</span>
         </button>
       </div>
+      </template>
+
+      <!-- 视图 2: 工程设计文档 GitHub README 风格预览 -->
+      <template v-else>
+        <DocsPreview />
+      </template>
     </div>
 
     <!-- Toast 提示 -->
@@ -249,7 +286,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import DocsPreview from '@/components/DocsPreview.vue'
 import {
   fetchModelConfig,
   saveModelConfig,
@@ -257,6 +296,24 @@ import {
   fetchRemoteModels,
   OpenAIConfig,
 } from '@/api/settings'
+
+const route = useRoute()
+const router = useRouter()
+const activeTab = ref<'model' | 'docs'>((route.query.tab as 'model' | 'docs') || 'model')
+
+function switchTab(tab: 'model' | 'docs') {
+  activeTab.value = tab
+  router.replace({ query: { ...route.query, tab } })
+}
+
+watch(
+  () => route.query.tab,
+  (newTab) => {
+    if (newTab === 'docs' || newTab === 'model') {
+      activeTab.value = newTab
+    }
+  }
+)
 
 const showKey = ref(false)
 const testing = ref(false)
@@ -439,6 +496,7 @@ function resetDefaults() {
   border-bottom: 1px solid var(--border-default);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0 24px;
 }
 
@@ -453,6 +511,39 @@ function resetDefaults() {
   color: var(--text-muted);
 }
 
+.settings-tab-group {
+  display: flex;
+  align-items: center;
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+}
+
+.settings-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.settings-tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.settings-tab-btn.active {
+  background-color: var(--bg-surface);
+  color: var(--primary);
+  box-shadow: var(--shadow-sm);
+  font-weight: 600;
+}
+
 .settings-scroll-area {
   flex: 1;
   padding: 24px 32px;
@@ -463,6 +554,11 @@ function resetDefaults() {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  transition: max-width 0.2s ease;
+}
+
+.settings-scroll-area.wide-layout {
+  max-width: 1240px;
 }
 
 .card {

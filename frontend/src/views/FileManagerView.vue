@@ -5,9 +5,18 @@
       <div class="topbar-left">
         <h2 class="page-title">文件管理</h2>
         <div class="path-breadcrumbs">
-          <span class="crumb">raw</span>
-          <span class="crumb-sep">/</span>
-          <span class="crumb active">origin</span>
+          <button type="button" class="crumb" :class="{ active: !browsePath }" @click="openDir('')">llm-wiki</button>
+          <template v-for="(seg, idx) in pathSegments" :key="seg + idx">
+            <span class="crumb-sep">/</span>
+            <button
+              type="button"
+              class="crumb"
+              :class="{ active: idx === pathSegments.length - 1 }"
+              @click="openDir(segmentPath(idx))"
+            >
+              {{ seg }}
+            </button>
+          </template>
         </div>
       </div>
 
@@ -59,7 +68,7 @@
           <input
             type="text"
             v-model="searchQuery"
-            placeholder="搜索文件名称..."
+            placeholder="搜索当前目录..."
           />
           <button v-if="searchQuery" class="clear-search" @click="searchQuery = ''">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -98,80 +107,112 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="file in filteredFiles" :key="file.id" class="table-row">
+            <tr
+              v-for="entry in filteredEntries"
+              :key="entry.rel_path"
+              class="table-row"
+              :class="{ 'dir-row': entry.kind === 'dir' }"
+              @click="entry.kind === 'dir' && openDir(entry.rel_path)"
+            >
               <td class="td-id">
-                <span class="id-tag" :title="'统一文件编号: ' + (file.doc_id || file.id)">
-                  {{ file.doc_id || file.id }}
+                <span v-if="entry.doc_id" class="id-tag" :title="'统一文件编号: ' + entry.doc_id">
+                  {{ entry.doc_id }}
                 </span>
+                <span v-else class="muted-dash">—</span>
               </td>
               <td class="td-name">
-                <div class="file-icon-box">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <div class="file-icon-box" :class="{ 'folder-icon': entry.kind === 'dir' }">
+                  <svg v-if="entry.kind === 'dir'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                  </svg>
+                  <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                     <polyline points="14 2 14 8 20 8" />
                   </svg>
                 </div>
-                <span class="file-title" :title="file.name">{{ file.name }}</span>
+                <button
+                  v-if="entry.kind === 'dir'"
+                  type="button"
+                  class="file-title dir-link"
+                  :title="entry.rel_path"
+                  @click.stop="openDir(entry.rel_path)"
+                >
+                  {{ entry.name }}
+                </button>
+                <span v-else class="file-title" :title="entry.rel_path">{{ entry.name }}</span>
               </td>
               <td class="td-type">
-                <span class="tag-ext">{{ file.ext.toUpperCase() }}</span>
+                <span class="tag-ext">{{ entry.kind === 'dir' ? '文件夹' : (entry.ext || '文件').toUpperCase() }}</span>
               </td>
-              <td class="td-size">{{ file.size }}</td>
+              <td class="td-size">{{ entry.kind === 'dir' ? '—' : entry.size }}</td>
               <td class="td-status">
-                <span class="status-chip indexed">
+                <span class="status-chip" :class="zoneClass(entry)">
                   <span class="chip-dot"></span>
-                  已就绪
+                  {{ zoneLabel(entry) }}
                 </span>
               </td>
               <td class="td-conv">
+                <template v-if="entry.kind === 'file' && entry.in_origin">
+                  <button
+                    v-if="entry.is_converted"
+                    class="conv-badge converted-badge"
+                    @click.stop="handlePreview(entry)"
+                    title="点击查看已转换的 Markdown 内容"
+                  >
+                    <span class="chip-dot-green"></span>
+                    <span>已转 MD</span>
+                  </button>
+                  <button
+                    v-else
+                    class="conv-badge pending-badge"
+                    :disabled="convertingId === entry.rel_path"
+                    @click.stop="handleConvertSingle(entry)"
+                    title="点击将此文件转为 Markdown (file2md)"
+                  >
+                    <span class="chip-dot-gray"></span>
+                    <span>{{ convertingId === entry.rel_path ? '转换中...' : '转为 MD' }}</span>
+                  </button>
+                </template>
                 <button
-                  v-if="file.is_converted"
+                  v-else-if="entry.kind === 'file' && entry.rel_path.startsWith('raw/fulltext/')"
                   class="conv-badge converted-badge"
-                  @click="handlePreview(file)"
-                  title="点击查看已转换的 Markdown 内容"
+                  @click.stop="handlePreview(entry)"
+                  title="查看全文 Markdown"
                 >
                   <span class="chip-dot-green"></span>
-                  <span>已转 MD</span>
+                  <span>全文</span>
                 </button>
-                <button
-                  v-else
-                  class="conv-badge pending-badge"
-                  :disabled="convertingId === file.id"
-                  @click="handleConvertSingle(file)"
-                  title="点击将此文件转为 Markdown (file2md)"
-                >
-                  <span class="chip-dot-gray"></span>
-                  <span>{{ convertingId === file.id ? '转换中...' : '转为 MD' }}</span>
-                </button>
+                <span v-else class="muted-dash">—</span>
               </td>
-              <td class="td-date">{{ file.updated_at }}</td>
-              <td class="td-actions">
-                <div class="action-group">
+              <td class="td-date">{{ entry.updated_at }}</td>
+              <td class="td-actions" @click.stop>
+                <div v-if="entry.kind === 'file'" class="action-group">
                   <button
+                    v-if="entry.in_origin"
                     class="icon-btn"
-                    :disabled="convertingId === file.id"
-                    @click="handleConvertSingle(file)"
-                    :title="file.is_converted ? '重新转换为 Markdown' : '转为 Markdown (file2md)'"
+                    :disabled="convertingId === entry.rel_path"
+                    @click="handleConvertSingle(entry)"
+                    :title="entry.is_converted ? '重新转换为 Markdown' : '转为 Markdown (file2md)'"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="23 4 23 10 17 10" />
                       <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                     </svg>
                   </button>
-                  <button class="icon-btn" @click="handlePreview(file)" title="预览内容">
+                  <button class="icon-btn" @click="handlePreview(entry)" title="预览内容">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                       <circle cx="12" cy="12" r="3" />
                     </svg>
                   </button>
-                  <button class="icon-btn" @click="handleDownload(file)" title="下载文件">
+                  <button class="icon-btn" @click="handleDownload(entry)" title="下载文件">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                       <polyline points="7 10 12 15 17 10" />
                       <line x1="12" y1="15" x2="12" y2="3" />
                     </svg>
                   </button>
-                  <button class="icon-btn danger-hover" @click="handleDelete(file)" title="删除文件">
+                  <button class="icon-btn danger-hover" @click="handleDelete(entry)" title="删除文件">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="3 6 5 6 21 6" />
                       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
@@ -180,13 +221,13 @@
                 </div>
               </td>
             </tr>
-            <tr v-if="filteredFiles.length === 0">
+            <tr v-if="filteredEntries.length === 0">
               <td colspan="8" class="empty-state-cell">
                 <div class="empty-content">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                   </svg>
-                  <span>{{ loading ? '正在加载文件列表...' : 'raw/origin 目录下暂无文件，点击上方按钮上传' }}</span>
+                  <span>{{ loading ? '正在加载目录...' : '此目录下没有匹配的内容' }}</span>
                 </div>
               </td>
             </tr>
@@ -283,11 +324,17 @@
         <div class="modal-content">
           <pre v-if="!previewInfo.is_binary" class="code-view">{{ previewInfo.content }}</pre>
           <div v-else class="binary-doc-view">
-            <p>该文件为二进制文档 ({{ previewInfo.size }})，已持久化至 raw/origin。尚未转换出 Markdown 全文。</p>
+            <p v-if="previewInfo.in_origin">该文件为二进制文档 ({{ previewInfo.size }})，位于 raw/origin。尚未转换出 Markdown 全文。</p>
+            <p v-else>该文件为二进制文档 ({{ previewInfo.size }})，无法直接预览文本。</p>
             <div class="btn-row">
-              <button class="btn btn-secondary btn-sm" @click="triggerDownloadByName(previewInfo.name)">下载源文件</button>
-              <button class="btn btn-primary btn-sm" :disabled="convertingId === previewInfo.name" @click="handleConvertFromModal(previewInfo.name)">
-                <span>{{ convertingId === previewInfo.name ? '转换中...' : '转为 Markdown (file2md)' }}</span>
+              <button class="btn btn-secondary btn-sm" @click="triggerDownloadByName(previewInfo.rel_path || previewInfo.name)">下载文件</button>
+              <button
+                v-if="previewInfo.in_origin"
+                class="btn btn-primary btn-sm"
+                :disabled="convertingId === (previewInfo.rel_path || previewInfo.name)"
+                @click="handleConvertFromModal(previewInfo.name, previewInfo.rel_path)"
+              >
+                <span>{{ convertingId === (previewInfo.rel_path || previewInfo.name) ? '转换中...' : '转为 Markdown (file2md)' }}</span>
               </button>
             </div>
           </div>
@@ -372,15 +419,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import {
-  fetchFiles,
+  fetchBrowse,
   uploadFiles,
-  deleteFile,
+  deleteEntry,
   fetchPreview,
   getDownloadUrl,
   convertSingleFile2Md,
   convertAllFiles2Md,
   fetchDocumentRecords,
-  FileItem,
+  BrowseEntry,
+  BrowseResult,
   PreviewData,
   DocumentRecord,
 } from '@/api/files'
@@ -420,17 +468,46 @@ const filterTabs = [
   { key: 'txt', name: '纯文本' },
 ]
 
-const files = ref<FileItem[]>([])
+const browse = ref<BrowseResult>({ root: 'llm-wiki', path: '', parent: null, entries: [] })
+const browsePath = computed(() => browse.value.path)
+const pathSegments = computed(() => (browse.value.path ? browse.value.path.split('/') : []))
+
+function segmentPath(index: number): string {
+  return pathSegments.value.slice(0, index + 1).join('/')
+}
+
+function zoneLabel(entry: BrowseEntry): string {
+  if (entry.kind === 'dir') return '目录'
+  if (entry.in_origin) return '原始素材'
+  if (entry.rel_path.startsWith('raw/fulltext/')) return '全文'
+  if (entry.rel_path.startsWith('wiki/')) return 'Wiki'
+  return '文件'
+}
+
+function zoneClass(entry: BrowseEntry): string {
+  if (entry.kind === 'dir') return 'folder'
+  if (entry.in_origin) return 'origin'
+  if (entry.rel_path.startsWith('raw/fulltext/')) return 'indexed'
+  if (entry.rel_path.startsWith('wiki/')) return 'wiki'
+  return 'folder'
+}
 
 async function loadFiles() {
   loading.value = true
   try {
-    files.value = await fetchFiles()
+    browse.value = await fetchBrowse(browse.value.path)
   } catch (err: any) {
-    showToast(err.message || '加载文件列表失败')
+    showToast(err.message || '加载目录失败')
   } finally {
     loading.value = false
   }
+}
+
+async function openDir(path: string) {
+  browse.value = { ...browse.value, path }
+  searchQuery.value = ''
+  currentFilter.value = 'all'
+  await loadFiles()
 }
 
 async function handleConvertAll() {
@@ -446,11 +523,11 @@ async function handleConvertAll() {
   }
 }
 
-async function handleConvertSingle(file: FileItem) {
-  convertingId.value = file.id
+async function handleConvertSingle(entry: BrowseEntry) {
+  convertingId.value = entry.rel_path
   try {
-    const res = await convertSingleFile2Md(file.name, true)
-    showToast(res.message || `文件 ${file.name} 转换完成！`)
+    const res = await convertSingleFile2Md(entry.name, true)
+    showToast(res.message || `文件 ${entry.name} 转换完成！`)
     await loadFiles()
   } catch (err: any) {
     showToast(err.message || '文件转换失败')
@@ -459,13 +536,13 @@ async function handleConvertSingle(file: FileItem) {
   }
 }
 
-async function handleConvertFromModal(filename: string) {
-  convertingId.value = filename
+async function handleConvertFromModal(filename: string, relPath?: string) {
+  convertingId.value = relPath || filename
   try {
     await convertSingleFile2Md(filename, true)
     showToast(`文件 ${filename} 转换成功！`)
     await loadFiles()
-    previewInfo.value = await fetchPreview(filename)
+    previewInfo.value = await fetchPreview(relPath || `raw/origin/${filename}`)
   } catch (err: any) {
     showToast(err.message || '文件转换失败')
   } finally {
@@ -477,12 +554,15 @@ onMounted(() => {
   loadFiles()
 })
 
-const filteredFiles = computed(() => {
-  return files.value.filter((file) => {
-    const matchesSearch = file.name.toLowerCase().includes(searchQuery.value.trim().toLowerCase())
-    if (!matchesSearch) return false
+const currentFiles = computed(() => browse.value.entries.filter((entry) => entry.kind === 'file'))
 
-    const ext = file.ext.toLowerCase()
+const filteredEntries = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase()
+  return browse.value.entries.filter((entry) => {
+    const matchesSearch = !query || entry.name.toLowerCase().includes(query) || entry.rel_path.toLowerCase().includes(query)
+    if (!matchesSearch) return false
+    if (entry.kind === 'dir') return currentFilter.value === 'all'
+    const ext = entry.ext.toLowerCase()
     if (currentFilter.value === 'doc') {
       return ['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'pdf'].includes(ext)
     } else if (currentFilter.value === 'md') {
@@ -495,10 +575,10 @@ const filteredFiles = computed(() => {
 })
 
 function getFilterCount(key: string): number {
-  if (key === 'all') return files.value.length
-  if (key === 'doc') return files.value.filter((f) => ['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'pdf'].includes(f.ext.toLowerCase())).length
-  if (key === 'md') return files.value.filter((f) => f.ext.toLowerCase() === 'md').length
-  if (key === 'txt') return files.value.filter((f) => f.ext.toLowerCase() === 'txt').length
+  if (key === 'all') return browse.value.entries.length
+  if (key === 'doc') return currentFiles.value.filter((f) => ['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'pdf'].includes(f.ext.toLowerCase())).length
+  if (key === 'md') return currentFiles.value.filter((f) => f.ext.toLowerCase() === 'md').length
+  if (key === 'txt') return currentFiles.value.filter((f) => f.ext.toLowerCase() === 'txt').length
   return 0
 }
 
@@ -543,16 +623,16 @@ async function confirmUpload() {
   }
 }
 
-async function handlePreview(file: FileItem) {
+async function handlePreview(entry: BrowseEntry) {
   try {
-    previewInfo.value = await fetchPreview(file.name)
+    previewInfo.value = await fetchPreview(entry.rel_path)
   } catch (err: any) {
     showToast(err.message || '获取预览失败')
   }
 }
 
-function handleDownload(file: FileItem) {
-  triggerDownloadByName(file.name)
+function handleDownload(entry: BrowseEntry) {
+  triggerDownloadByName(entry.rel_path)
 }
 
 function triggerDownloadByName(filename: string) {
@@ -566,11 +646,12 @@ function triggerDownloadByName(filename: string) {
   showToast(`已开始下载: ${filename}`)
 }
 
-async function handleDelete(file: FileItem) {
-  if (confirm(`确定要从 raw/origin 目录中永久删除 "${file.name}" 吗？`)) {
+async function handleDelete(entry: BrowseEntry) {
+  const where = entry.in_origin ? 'raw/origin（同时清理对应全文）' : entry.rel_path
+  if (confirm(`确定要永久删除「${entry.name}」吗？\n位置：${where}`)) {
     try {
-      await deleteFile(file.name)
-      showToast(`已成功删除: ${file.name}`)
+      await deleteEntry(entry.rel_path)
+      showToast(`已成功删除: ${entry.name}`)
       await loadFiles()
     } catch (err: any) {
       showToast(err.message || '删除失败')
@@ -628,6 +709,16 @@ function formatBytes(bytes: number): string {
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-default);
+}
+
+.crumb {
+  color: inherit;
+  font: inherit;
+  padding: 0;
+}
+
+.crumb:hover {
+  color: var(--text-primary);
 }
 
 .crumb.active {
@@ -771,6 +862,18 @@ function formatBytes(bytes: number): string {
   background-color: var(--bg-subtle);
 }
 
+.dir-row {
+  cursor: pointer;
+}
+
+.folder-icon {
+  color: var(--accent);
+}
+
+.muted-dash {
+  color: var(--text-faint);
+}
+
 .td-name {
   display: flex;
   align-items: center;
@@ -797,6 +900,14 @@ function formatBytes(bytes: number): string {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dir-link {
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  padding: 0;
+  justify-content: flex-start;
 }
 
 .tag-ext {
@@ -836,6 +947,27 @@ function formatBytes(bytes: number): string {
 }
 .status-chip.indexed .chip-dot {
   background-color: var(--success);
+}
+
+.status-chip.origin {
+  color: var(--accent);
+}
+.status-chip.origin .chip-dot {
+  background-color: var(--accent);
+}
+
+.status-chip.wiki {
+  color: var(--text-secondary);
+}
+.status-chip.wiki .chip-dot {
+  background-color: var(--text-secondary);
+}
+
+.status-chip.folder {
+  color: var(--text-muted);
+}
+.status-chip.folder .chip-dot {
+  background-color: var(--text-faint);
 }
 
 .conv-badge {

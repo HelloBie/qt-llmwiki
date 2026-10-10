@@ -23,6 +23,31 @@ export interface PreviewData {
   size: string
   doc_id?: string
   is_converted_preview?: boolean
+  rel_path?: string
+  in_origin?: boolean
+}
+
+export interface BrowseEntry {
+  name: string
+  rel_path: string
+  kind: 'dir' | 'file'
+  ext: string
+  size: string
+  size_bytes: number
+  updated_at: string
+  doc_id?: number | null
+  is_converted?: boolean
+  converted_target?: string | null
+  origin_path?: string | null
+  md_path?: string | null
+  in_origin?: boolean
+}
+
+export interface BrowseResult {
+  root: string
+  path: string
+  parent: string | null
+  entries: BrowseEntry[]
 }
 
 export interface DocumentRecord {
@@ -60,9 +85,9 @@ export interface FulltextItem {
   updated_at: string
 }
 
-/** 获取 raw/origin 目录下的所有文件 */
-export async function fetchFiles(): Promise<FileItem[]> {
-  return apiClient.get('/files')
+/** 浏览 llm-wiki 下的某个目录，path 为空时返回根目录 */
+export async function fetchBrowse(path = ''): Promise<BrowseResult> {
+  return apiClient.get('/files', { params: { path } })
 }
 
 /** 上传文件至 raw/origin */
@@ -79,14 +104,14 @@ export async function uploadFiles(files: File[]): Promise<FileItem[]> {
   })
 }
 
-/** 删除 raw/origin 下的指定文件 */
-export async function deleteFile(filename: string): Promise<void> {
-  return apiClient.delete(`/files/${encodeURIComponent(filename)}`)
+/** 按 llm-wiki 相对路径删除文件 */
+export async function deleteEntry(relPath: string): Promise<void> {
+  return apiClient.delete('/files/entry', { params: { path: relPath } })
 }
 
-/** 预览文件内容（支持原生文本与已转换 Markdown 预览） */
-export async function fetchPreview(filename: string): Promise<PreviewData> {
-  return apiClient.get(`/files/preview/${encodeURIComponent(filename)}`)
+/** 按相对路径预览文件内容（支持原生文本与已转换 Markdown 预览） */
+export async function fetchPreview(relPath: string): Promise<PreviewData> {
+  return apiClient.get('/files/preview', { params: { path: relPath } })
 }
 
 /** 单个文件转换为 Markdown */
@@ -109,10 +134,10 @@ export async function fetchFulltextContent(filename: string): Promise<{ filename
   return apiClient.get(`/files/fulltext/${encodeURIComponent(filename)}`)
 }
 
-/** 获取下载 URL */
-export function getDownloadUrl(filename: string): string {
+/** 获取 llm-wiki 内文件的下载 URL */
+export function getDownloadUrl(relPath: string): string {
   const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
-  return `${baseURL}/files/download/${encodeURIComponent(filename)}`
+  return `${baseURL}/files/download?path=${encodeURIComponent(relPath)}`
 }
 
 /** 获取 SQLite 数据库中记录的文档映射全表信息 */

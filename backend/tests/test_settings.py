@@ -123,3 +123,58 @@ def test_extract_model_ids_helper():
     ]
     assert extract_model_ids(list_data) == ["deepseek-chat", "claude-3-5-sonnet", "gemini-1.5-pro"]
 
+
+def test_list_design_docs_endpoint(client: TestClient):
+    """测试获取系统工程设计文档列表端点"""
+    res = client.get("/api/v1/settings/docs")
+    assert res.status_code == 200
+    docs = res.json()
+    assert isinstance(docs, list)
+    assert len(docs) == 5
+
+    doc_ids = [d["id"] for d in docs]
+    assert "01_hld" in doc_ids
+    assert "02_dd" in doc_ids
+    assert "03_dbd" in doc_ids
+    assert "04_api" in doc_ids
+    assert "readme" in doc_ids
+
+    # 验证字段完整性
+    for doc in docs:
+        assert "filename" in doc
+        assert "title" in doc
+        assert "badge" in doc
+        assert "description" in doc
+        assert "size_bytes" in doc
+        assert "line_count" in doc
+        assert doc["size_bytes"] > 0
+        assert doc["line_count"] > 0
+
+
+def test_get_design_doc_detail_endpoint(client: TestClient):
+    """测试获取具体设计文档内容端点及防穿透机制"""
+    # 正常获取 01_hld
+    res = client.get("/api/v1/settings/docs/01_hld")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["id"] == "01_hld"
+    assert data["badge"] == "HLD"
+    assert "概要设计说明书" in data["title"]
+    assert "content" in data
+    assert len(data["content"]) > 100
+    assert "系统总体架构" in data["content"]
+
+    # 正常获取 readme
+    res_readme = client.get("/api/v1/settings/docs/readme")
+    assert res_readme.status_code == 200
+    assert res_readme.json()["badge"] == "INDEX"
+
+    # 测试不存在的文档 ID 返回 404
+    res_404 = client.get("/api/v1/settings/docs/non_existent_doc")
+    assert res_404.status_code == 404
+
+    # 测试路径穿越攻击阻止返回 404
+    res_traversal = client.get("/api/v1/settings/docs/../../etc/passwd")
+    assert res_traversal.status_code == 404
+
+

@@ -1,4 +1,6 @@
 import time
+from datetime import datetime
+from pathlib import Path
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
@@ -218,3 +220,158 @@ async def test_endpoint_connection(req: TestConnectionRequest) -> TestConnection
 async def get_remote_models(req: TestConnectionRequest) -> TestConnectionResponse:
     """拉取目标 OpenAI 兼容端点所提供的全部模型 ID 列表"""
     return await test_endpoint_connection(req)
+
+
+# ==============================================================================
+# 系统工程设计文档 (HLD / DD / DBD / API / README)
+# ==============================================================================
+
+class DocMeta(BaseModel):
+    id: str = Field(..., description="文档标识")
+    filename: str = Field(..., description="文档文件名")
+    title: str = Field(..., description="文档标题")
+    badge: str = Field(..., description="文档分类徽章")
+    description: str = Field(..., description="文档简要描述")
+    size_bytes: int = Field(default=0, description="文件大小（字节）")
+    line_count: int = Field(default=0, description="行数")
+    updated_at: str = Field(default="", description="最后更新时间")
+
+
+class DocDetail(DocMeta):
+    content: str = Field(..., description="Markdown 原始正文文本")
+
+
+DOCS_REGISTRY: List[Dict[str, str]] = [
+    {
+        "id": "01_hld",
+        "filename": "01_概要设计说明书_总体设计.md",
+        "title": "01 概要设计说明书（总体设计）",
+        "badge": "HLD",
+        "description": "系统总体架构、技术栈、部署拓扑、数据流与模块依赖设计",
+    },
+    {
+        "id": "02_dd",
+        "filename": "02_详细设计说明书_DD.md",
+        "title": "02 详细设计说明书（DD）",
+        "badge": "DD",
+        "description": "模块内部逻辑、核心服务、LangGraph 智能体状态机与算法时序",
+    },
+    {
+        "id": "03_dbd",
+        "filename": "03_数据库设计文档_DBD.md",
+        "title": "03 数据库设计文档（DBD）",
+        "badge": "DBD",
+        "description": "实体关系 ER 图、SQLite 数据库表结构、字段索引与持久化策略",
+    },
+    {
+        "id": "04_api",
+        "filename": "04_接口设计文档_API.md",
+        "title": "04 接口设计文档（API Doc）",
+        "badge": "API",
+        "description": "前后端 RESTful / SSE 流式接口、参数契约、错误码与鉴权方式",
+    },
+    {
+        "id": "readme",
+        "filename": "README.md",
+        "title": "系统工程设计文档索引",
+        "badge": "INDEX",
+        "description": "工程技术架构标准与设计规约索引目录",
+    },
+]
+
+
+def get_docs_dir() -> Path:
+    """按优先级探测系统设计文档目录所在位置"""
+    candidates = [
+        Path(__file__).resolve().parent.parent.parent.parent.parent / "docs",
+        Path("/app/docs"),
+        Path("docs").resolve(),
+        Path("../docs").resolve(),
+    ]
+    for c in candidates:
+        if c.is_dir():
+            return c
+    return candidates[0]
+
+
+@router.get("/docs", response_model=List[DocMeta], summary="获取系统工程设计文档列表")
+async def list_design_docs() -> List[DocMeta]:
+    """读取 docs/ 目录下所有标准化工程设计文档的元数据信息"""
+    docs_dir = get_docs_dir()
+    results: List[DocMeta] = []
+
+    for item in DOCS_REGISTRY:
+        file_path = docs_dir / item["filename"]
+        size_bytes = 0
+        line_count = 0
+        updated_at = ""
+
+        if file_path.exists() and file_path.is_file():
+            stat = file_path.stat()
+            size_bytes = stat.st_size
+            updated_at = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                content = file_path.read_text(encoding="utf-8")
+                line_count = len(content.splitlines())
+            except Exception:
+                pass
+
+        results.append(
+            DocMeta(
+                id=item["id"],
+                filename=item["filename"],
+                title=item["title"],
+                badge=item["badge"],
+                description=item["description"],
+                size_bytes=size_bytes,
+                line_count=line_count,
+                updated_at=updated_at,
+            )
+        )
+    return results
+
+
+@router.get("/docs/{doc_id}", response_model=DocDetail, summary="获取指定设计文档的完整 Markdown 内容")
+async def get_design_doc_detail(doc_id: str) -> DocDetail:
+    """获取指定设计文档的详情与完整 Markdown 正文（安全白名单匹配防路径穿越）"""
+    docs_dir = get_docs_dir()
+
+    target = None
+    for item in DOCS_REGISTRY:
+        if item["id"] == doc_id or item["filename"] == doc_id:
+            target = item
+            break
+
+    if not target:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"未找到指定的设计文档: {doc_id}",
+        )
+
+    file_path = docs_dir / target["filename"]
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"设计文档文件在服务端不存在: {target['filename']}",
+        )
+
+    try:
+        content = file_path.read_text(encoding="utf-8")
+        stat = file_path.stat()
+        return DocDetail(
+            id=target["id"],
+            filename=target["filename"],
+            title=target["title"],
+            badge=target["badge"],
+            description=target["description"],
+            size_bytes=stat.st_size,
+            line_count=len(content.splitlines()),
+            updated_at=datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+            content=content,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"读取文档内容失败: {str(e)}",
+        )
+
